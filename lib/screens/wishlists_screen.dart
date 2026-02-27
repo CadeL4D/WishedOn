@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/category.dart';
 import '../models/destination.dart';
-import '../widgets/category_icon.dart';
 import '../widgets/destination_card.dart';
 import 'detail_screen.dart';
 import 'group_settings_screen.dart';
