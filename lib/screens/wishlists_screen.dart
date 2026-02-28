@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/category.dart';
-import '../models/destination.dart';
-import '../widgets/destination_card.dart';
-import 'detail_screen.dart';
+import '../models/person.dart';
+import '../models/my_list_item.dart';
+import '../widgets/person_card.dart';
+import 'person_wishlist_screen.dart';
 import 'group_settings_screen.dart';
 import 'my_list_screen.dart';
 
@@ -19,22 +20,29 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
   int _selectedIndex = 0;
   int _selectedTopTab = 0;
 
-  final List<Destination> destinations = [
-    Destination(
-      title: 'Cascade',
-      location: 'Canada, Banff',
-      imageUrl: 'https://images.unsplash.com/photo-1510798831971-661eb04b3739?q=80&w=800&auto=format&fit=crop',
-      rating: 4.5,
-      price: 180,
-      description: 'Cascade Mountain is a mountain located in the Bow River Valley of Banff National Park, Alberta, Canada. The mountain is named for the waterfall or cascade on the southern flanks of the peak.',
+  final List<Person> groupMembers = [
+    Person(
+      id: '1',
+      name: 'Sarah (Me)',
+      avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&auto=format&fit=crop',
+      wishlist: [], // Usually fetched from the local prefs or DB
     ),
-    Destination(
-      title: 'Yosemite',
-      location: 'USA, California',
-      imageUrl: 'https://images.unsplash.com/photo-1426604966848-d7adac402bff?q=80&w=800&auto=format&fit=crop',
-      rating: 4.0,
-      price: 250,
-      description: 'Yosemite National Park is located in central Sierra Nevada in the US state of California. It is located near the wild protected areas.',
+    Person(
+      id: '2',
+      name: 'John Doe',
+      avatarUrl: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=200&auto=format&fit=crop',
+      wishlist: [
+        MyListItem(id: 'a', name: 'AirPods Pro', price: 249.0, url: 'https://apple.com', domain: 'apple.com'),
+        MyListItem(id: 'b', name: 'Standing Desk', price: 399.0, url: 'https://ikea.com', domain: 'ikea.com'),
+      ],
+    ),
+    Person(
+      id: '3',
+      name: 'Alice',
+      avatarUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=200&auto=format&fit=crop',
+      wishlist: [
+        MyListItem(id: 'c', name: 'Kindle Paperwhite', price: 139.0, url: 'https://amazon.com', domain: 'amazon.com'),
+      ],
     ),
   ];
 
@@ -159,19 +167,19 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
               const SizedBox(height: 20),
               // Horizontal ListView
               SizedBox(
-                height: 300,
+                height: 200,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
-                  itemCount: destinations.length,
+                  itemCount: groupMembers.length,
                   itemBuilder: (context, index) {
-                    return DestinationCard(
-                      destination: destinations[index],
+                    return PersonCard(
+                      person: groupMembers[index],
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => DetailScreen(
-                              destination: destinations[index],
+                            builder: (context) => PersonWishlistScreen(
+                              person: groupMembers[index],
                             ),
                           ),
                         );

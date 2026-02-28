@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import '../models/destination.dart';
+import '../models/person.dart';
 
-class DestinationCard extends StatelessWidget {
-  final Destination destination;
+class PersonCard extends StatelessWidget {
+  final Person person;
   final VoidCallback onTap;
 
-  const DestinationCard({
+  const PersonCard({
     super.key,
-    required this.destination,
+    required this.person,
     required this.onTap,
   });
 
@@ -16,12 +16,12 @@ class DestinationCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 200,
+        width: 140,
         margin: const EdgeInsets.only(right: 16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
           image: DecorationImage(
-            image: NetworkImage(destination.imageUrl),
+            image: NetworkImage(person.avatarUrl),
             fit: BoxFit.cover,
           ),
           boxShadow: [
@@ -41,39 +41,31 @@ class DestinationCard extends StatelessWidget {
               colors: [
                 Colors.black.withOpacity(0.8),
                 Colors.transparent,
+                Colors.transparent,
               ],
+              stops: const [0, 0.4, 1],
             ),
           ),
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.end,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                destination.title,
+                person.name,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.location_on,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    destination.location,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
+              Text(
+                '${person.wishlist.length} items',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.8),
+                  fontSize: 12,
+                ),
               ),
             ],
           ),
