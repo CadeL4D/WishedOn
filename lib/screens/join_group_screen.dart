@@ -6,7 +6,16 @@ import '../services/database_service.dart';
 import 'wishlists_screen.dart';
 
 class JoinGroupScreen extends StatefulWidget {
-  const JoinGroupScreen({super.key});
+  final String? initialGroupId;
+  final String? initialGroupName;
+  final String? initialGroupCode;
+
+  const JoinGroupScreen({
+    super.key, 
+    this.initialGroupId, 
+    this.initialGroupName, 
+    this.initialGroupCode,
+  });
 
   @override
   State<JoinGroupScreen> createState() => _JoinGroupScreenState();
@@ -22,7 +31,7 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
   bool _isLoading = false;
   bool _stepTwo = false;
   
-  // Group data fetched in Step 1
+  // Group data fetched in Step 1 (or passed in)
   String? _foundGroupId;
   String? _foundGroupName;
   
@@ -33,6 +42,15 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
   void initState() {
     super.initState();
     _currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    
+    if (widget.initialGroupId != null && widget.initialGroupName != null) {
+      _foundGroupId = widget.initialGroupId;
+      _foundGroupName = widget.initialGroupName;
+      _stepTwo = true;
+      if (widget.initialGroupCode != null) {
+        _codeController.text = widget.initialGroupCode!;
+      }
+    }
   }
 
   Future<void> _findGroup() async {

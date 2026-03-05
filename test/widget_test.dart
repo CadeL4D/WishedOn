@@ -16,8 +16,9 @@ void main() {
 
     // Verify that our login screen is shown.
     expect(find.text('Welcome to\nWishOnIt'), findsOneWidget);
-    expect(find.text('Sign In'), findsOneWidget);
-    expect(find.text('Join a Group'), findsOneWidget);
-    expect(find.text('Continue as Guest'), findsOneWidget);
+    expect(find.text('Sign In'), findsWidgets);
+    expect(find.text('Code'), findsWidgets);
+    expect(find.text('Continue as Guest'), findsNothing);
+    expect(find.text('Join a Group'), findsNothing);
   });
 }
