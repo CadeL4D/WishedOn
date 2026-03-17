@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/category.dart';
 import '../models/person.dart';
 import '../models/my_list_item.dart';
@@ -10,6 +11,8 @@ import '../services/database_service.dart';
 import 'person_wishlist_screen.dart';
 import 'group_settings_screen.dart';
 import 'my_list_screen.dart';
+import 'dashboard_screen.dart';
+import 'login_screen.dart';
 
 class WishlistsScreen extends StatefulWidget {
   final bool isOwner;
@@ -81,7 +84,13 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
     
     final bool hasProfile = _myMemberId != null && _myMemberId!.isNotEmpty;
     if (hasProfile) {
-      pages.add(const MyListScreen());
+      pages.add(MyListScreen(
+        onBack: () {
+          setState(() {
+            _selectedIndex = 0; // Switch back to Wishlists tab
+          });
+        },
+      ));
     }
     
     if (widget.isOwner) {
@@ -97,6 +106,9 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
       bottomNavigationBar: _buildBottomNav(),
     );
   }
+
+  // Bottom Nav builder omitted for brevity...
+  // (Assuming _buildBottomNav is unchanged)
 
   Widget? _buildBottomNav() {
     List<BottomNavigationBarItem> items = [
@@ -158,7 +170,38 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Icon(Icons.menu, size: 30),
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, size: 28, color: Colors.black87),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () async {
+                      // Check if the user is authenticated
+                      final prefs = await SharedPreferences.getInstance();
+                      
+                      // Clear the active session so they don't get auto-routed back
+                      await prefs.remove('activeGroupId');
+                      await prefs.remove('activeMemberId');
+
+                      bool isSignedIn = FirebaseAuth.instance.currentUser != null;
+                      
+                      if (context.mounted) {
+                        if (isSignedIn) {
+                           // Navigate straight to DashboardScreen if signed in.
+                           // Getting the full route since we don't have a named route for it.
+                           Navigator.of(context).pushAndRemoveUntil(
+                             MaterialPageRoute(builder: (context) => const DashboardScreen()),
+                             (route) => false,
+                           );
+                        } else {
+                           // Guests should be kicked to root (LoginScreen) to rejoin
+                           Navigator.of(context).pushAndRemoveUntil(
+                             MaterialPageRoute(builder: (context) => const LoginScreen()),
+                             (route) => false,
+                           );
+                        }
+                      }
+                    },
+                  ),
                   if (_groupId != null)
                     StreamBuilder<DocumentSnapshot>(
                       stream: _databaseService.getGroupStream(_groupId!),

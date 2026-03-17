@@ -32,11 +32,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _joinExistingGroup(String groupId, String ownerUid) async {
+    if (_userId == null) return;
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('activeGroupId', groupId);
-    // Determine activeMemberId for this user within this group.
-    // Generally it's their user ID if they made the group or joined via auth.
-    await prefs.setString('activeMemberId', _userId ?? '');
+
+    String activeMemberId = _userId!;
+    
+    try {
+      final docRef = FirebaseFirestore.instance.collection('groups').doc(groupId).collection('members').doc(_userId);
+      final docSnap = await docRef.get();
+      if (!docSnap.exists) {
+        // Not the owner/registered directly, let's search if they claimed a guest profile
+        final qs = await FirebaseFirestore.instance
+            .collection('groups')
+            .doc(groupId)
+            .collection('members')
+            .where('claimedByUid', isEqualTo: _userId)
+            .limit(1)
+            .get();
+        if (qs.docs.isNotEmpty) {
+          activeMemberId = qs.docs.first.id;
+        }
+      }
+    } catch (e) {
+      print('Error finding member: $e');
+    }
+
+    await prefs.setString('activeMemberId', activeMemberId);
     
     if (mounted) {
       Navigator.push(

@@ -137,8 +137,10 @@ class DatabaseService {
       await groupRef.update({
         'memberIds': FieldValue.arrayUnion([userId]),
       });
-      // Optionally update the member sub-doc to indicate it has been claimed by this user
-      // We will skip full deep-registration logic for now and just link the dashboard access
+      // Update the member sub-doc to indicate it has been claimed by this user
+      await groupRef.collection('members').doc(memberId).set({
+        'claimedByUid': userId,
+      }, SetOptions(merge: true));
     } catch (e) {
       print('Error claiming member: $e');
       throw e;

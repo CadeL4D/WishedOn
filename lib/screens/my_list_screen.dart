@@ -9,7 +9,9 @@ import '../models/my_list_item.dart';
 import '../services/database_service.dart';
 
 class MyListScreen extends StatefulWidget {
-  const MyListScreen({super.key});
+  final VoidCallback? onBack;
+
+  const MyListScreen({super.key, this.onBack});
 
   @override
   State<MyListScreen> createState() => _MyListScreenState();
@@ -87,6 +89,16 @@ class _MyListScreenState extends State<MyListScreen> {
         title: const Text('My List'),
         backgroundColor: const Color(0xFFF6F8FB),
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          onPressed: () {
+            if (widget.onBack != null) {
+              widget.onBack!();
+            } else {
+              Navigator.maybePop(context);
+            }
+          },
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
