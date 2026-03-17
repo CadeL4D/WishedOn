@@ -11,6 +11,30 @@ class PersonCard extends StatelessWidget {
     required this.onTap,
   });
 
+  Widget _buildFallbackAvatar() {
+    final emojis = [
+      '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', 
+      '🦁', '🐮', '🐷', '🐸', '🐵', '🐧', '🦉', '🦄', '🐝', '🐛', 
+      '🦋', '🐌', '🐞', '🐜', '🐢', '🐙', '🦑', '🐠', '🐟', '🐬'
+    ];
+    int index = 0;
+    if (person.name.isNotEmpty) {
+      index = person.name.codeUnits.fold<int>(0, (a, b) => a + b) % emojis.length;
+    }
+    
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: Colors.grey.shade200,
+      child: Center(
+        child: Text(
+          emojis[index],
+          style: const TextStyle(fontSize: 50),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -20,10 +44,6 @@ class PersonCard extends StatelessWidget {
         margin: const EdgeInsets.only(right: 16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
-          image: DecorationImage(
-            image: NetworkImage(person.avatarUrl),
-            fit: BoxFit.cover,
-          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.1),
@@ -32,21 +52,35 @@ class PersonCard extends StatelessWidget {
             ),
           ],
         ),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            gradient: LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [
-                Colors.black.withOpacity(0.8),
-                Colors.transparent,
-                Colors.transparent,
-              ],
-              stops: const [0, 0.4, 1],
-            ),
-          ),
-          padding: const EdgeInsets.all(16),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (person.avatarUrl.isNotEmpty)
+                Image.network(
+                  person.avatarUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return _buildFallbackAvatar();
+                  },
+                )
+              else
+                _buildFallbackAvatar(),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.8),
+                      Colors.transparent,
+                      Colors.transparent,
+                    ],
+                    stops: const [0, 0.4, 1],
+                  ),
+                ),
+                padding: const EdgeInsets.all(16),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.end,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -67,6 +101,9 @@ class PersonCard extends StatelessWidget {
                   fontSize: 12,
                 ),
               ),
+            ],
+          ),
+        ),
             ],
           ),
         ),

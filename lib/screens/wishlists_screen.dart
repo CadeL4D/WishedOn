@@ -263,16 +263,27 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
                           scrollDirection: Axis.horizontal,
                           itemCount: members.length,
                           itemBuilder: (context, index) {
-                            return PersonCard(
-                              person: members[index],
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => PersonWishlistScreen(
-                                      person: members[index],
-                                    ),
-                                  ),
+                            return StreamBuilder<QuerySnapshot>(
+                              stream: _databaseService.getMemberWishlistStream(_groupId!, members[index].id),
+                              builder: (context, wishlistSnapshot) {
+                                final person = Person(
+                                  id: members[index].id,
+                                  name: members[index].name,
+                                  avatarUrl: members[index].avatarUrl,
+                                  wishlist: wishlistSnapshot.data?.docs ?? [],
+                                );
+                                return PersonCard(
+                                  person: person,
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => PersonWishlistScreen(
+                                          person: person,
+                                        ),
+                                      ),
+                                    );
+                                  },
                                 );
                               },
                             );
