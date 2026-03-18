@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../services/database_service.dart';
 import 'wishlists_screen.dart';
 import 'create_group_screen.dart';
@@ -37,29 +38,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('activeGroupId', groupId);
 
-    String activeMemberId = _userId!;
+    print('[WishOnIt] _joinExistingGroup: userId=$_userId ownerUid=$ownerUid groupId=$groupId');
+
+    String activeMemberId = '';
     
     try {
-      final docRef = FirebaseFirestore.instance.collection('groups').doc(groupId).collection('members').doc(_userId);
-      final docSnap = await docRef.get();
-      if (!docSnap.exists) {
-        // Not the owner/registered directly, let's search if they claimed a guest profile
+      // Step 1: Check if the user has a direct member doc (i.e. they are the owner)
+      final ownerDocRef = FirebaseFirestore.instance
+          .collection('groups').doc(groupId)
+          .collection('members').doc(_userId);
+      final ownerDocSnap = await ownerDocRef.get();
+      
+      if (ownerDocSnap.exists) {
+        // User IS the owner or was added directly with their UID as document ID
+        print('[WishOnIt] Found direct member doc -> activeMemberId=$_userId (owner)');
+        activeMemberId = _userId!;
+      } else {
+        // Step 2: Search for a guest profile they claimed (must NOT be the owner's profile)
         final qs = await FirebaseFirestore.instance
             .collection('groups')
             .doc(groupId)
             .collection('members')
             .where('claimedByUid', isEqualTo: _userId)
-            .limit(1)
             .get();
-        if (qs.docs.isNotEmpty) {
-          activeMemberId = qs.docs.first.id;
+        
+        for (final doc in qs.docs) {
+          final docData = doc.data() as Map<String, dynamic>;
+          final isOwnerDoc = doc.id == ownerUid || docData['isRegisteredOwner'] == true;
+          
+          if (!isOwnerDoc) {
+            // Valid claimed profile
+            print('[WishOnIt] Found claimed guest profile -> activeMemberId=${doc.id}');
+            activeMemberId = doc.id;
+            break;
+          } else {
+            // Bad state: they've incorrectly claimed the owner's profile. Self-heal.
+            print('[WishOnIt] Removing bad claimedByUid from owner doc: ${doc.id}');
+            try {
+              await doc.reference.update({'claimedByUid': FieldValue.delete()});
+            } catch (e) {
+              print('[WishOnIt] Error self-healing: $e');
+            }
+          }
         }
+        // If activeMemberId is still '', they join as a viewer (no My List tab)
       }
     } catch (e) {
       print('Error finding member: $e');
     }
 
+    print('[WishOnIt] Final activeMemberId=$activeMemberId isOwner=${_userId == ownerUid}');
+
     await prefs.setString('activeMemberId', activeMemberId);
+    if (activeMemberId.isEmpty) {
+      await prefs.remove('activeMemberId');
+    }
+
     
     if (mounted) {
       Navigator.push(
@@ -86,6 +120,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: const Icon(Icons.logout, color: Colors.black87),
             onPressed: () async {
               await FirebaseAuth.instance.signOut();
+              try {
+                await GoogleSignIn().disconnect();
+              } catch (e) {
+                print("Error disconnecting Google: $e");
+              }
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove('activeGroupId');
+              await prefs.remove('activeMemberId');
               if (context.mounted) {
                 Navigator.of(context).pushReplacementNamed('/');
               }

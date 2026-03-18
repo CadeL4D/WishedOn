@@ -9,12 +9,14 @@ class JoinGroupScreen extends StatefulWidget {
   final String? initialGroupId;
   final String? initialGroupName;
   final String? initialGroupCode;
+  final String? initialGroupOwnerUid;
 
   const JoinGroupScreen({
     super.key, 
     this.initialGroupId, 
     this.initialGroupName, 
     this.initialGroupCode,
+    this.initialGroupOwnerUid,
   });
 
   @override
@@ -34,6 +36,7 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
   // Group data fetched in Step 1 (or passed in)
   String? _foundGroupId;
   String? _foundGroupName;
+  String? _foundGroupOwnerUid;
   
   // User auth details
   String? _currentUserId;
@@ -46,6 +49,7 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
     if (widget.initialGroupId != null && widget.initialGroupName != null) {
       _foundGroupId = widget.initialGroupId;
       _foundGroupName = widget.initialGroupName;
+      _foundGroupOwnerUid = widget.initialGroupOwnerUid;
       _stepTwo = true;
       if (widget.initialGroupCode != null) {
         _codeController.text = widget.initialGroupCode!;
@@ -74,6 +78,7 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
         setState(() {
           _foundGroupId = groupDoc.id;
           _foundGroupName = data['name'];
+          _foundGroupOwnerUid = data['ownerUid'];
           _stepTwo = true;
         });
       } else {
@@ -304,6 +309,7 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
                     _stepTwo = false;
                     _foundGroupId = null;
                     _foundGroupName = null;
+                    _foundGroupOwnerUid = null;
                   });
                 },
               )
@@ -404,10 +410,15 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
               }
 
               final allMembers = snapshot.data?.docs ?? [];
-              // Filter out the registered owner so they cannot be claimed
+              // Filter out: registered owner, owner by UID, and profiles already claimed by someone else
               final members = allMembers.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
-                return data['isRegisteredOwner'] != true;
+                if (data['isRegisteredOwner'] == true) return false;
+                if (doc.id == _foundGroupOwnerUid) return false;
+                final claimed = data['claimedByUid'] as String?;
+                // Allow if unclaimed OR if claimed by the current user (so they can re-enter)
+                if (claimed != null && claimed.isNotEmpty && claimed != _currentUserId) return false;
+                return true;
               }).toList();
               
               if (members.isEmpty) {
