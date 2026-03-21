@@ -90,7 +90,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     print('[WishOnIt] Final activeMemberId=$activeMemberId isOwner=${_userId == ownerUid}');
 
     await prefs.setString('activeMemberId', activeMemberId);
-    if (activeMemberId.isEmpty) {
+      if (activeMemberId.isEmpty) {
       await prefs.remove('activeMemberId');
     }
 
@@ -105,6 +105,107 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     }
+  }
+
+  void _showJoinGroupDialog(BuildContext context) {
+    final TextEditingController codeController = TextEditingController();
+    bool isDialogLoading = false;
+    String errorMsg = '';
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Join Group'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Enter the 6-digit group code.'),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: codeController,
+                    decoration: InputDecoration(
+                      hintText: 'Code',
+                      errorText: errorMsg.isNotEmpty ? errorMsg : null,
+                      filled: true,
+                      fillColor: const Color(0xFFF6F8FB),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 20, letterSpacing: 4, fontWeight: FontWeight.bold),
+                    onChanged: (v) {
+                      if (errorMsg.isNotEmpty) setDialogState(() => errorMsg = '');
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                ),
+                isDialogLoading
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : ElevatedButton(
+                      onPressed: () async {
+                        final code = codeController.text.trim().toUpperCase();
+                        if (code.isEmpty) {
+                          setDialogState(() => errorMsg = 'Code cannot be empty');
+                          return;
+                        }
+                        
+                        setDialogState(() => isDialogLoading = true);
+                        try {
+                          final groupDoc = await _databaseService.getGroupByCode(code);
+                          if (groupDoc != null) {
+                            final data = groupDoc.data() as Map<String, dynamic>;
+                            if (context.mounted) {
+                              Navigator.pop(context); // close dialog
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => JoinGroupScreen(
+                                    initialGroupId: groupDoc.id,
+                                    initialGroupName: data['name'],
+                                    initialGroupCode: code,
+                                  ),
+                                ),
+                              );
+                            }
+                          } else {
+                            setDialogState(() {
+                              isDialogLoading = false;
+                              errorMsg = 'Invalid group code';
+                            });
+                          }
+                        } catch (e) {
+                          setDialogState(() {
+                            isDialogLoading = false;
+                            errorMsg = 'Error: $e';
+                          });
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00C48C),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: const Text('Find Group', style: TextStyle(color: Colors.white)),
+                    ),
+              ],
+            );
+          }
+        );
+      }
+    );
   }
 
   @override
@@ -339,10 +440,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Expanded(
             child: GestureDetector(
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const JoinGroupScreen()),
-                );
+                _showJoinGroupDialog(context);
               },
               child: Container(
                 decoration: BoxDecoration(

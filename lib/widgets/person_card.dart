@@ -12,6 +12,20 @@ class PersonCard extends StatelessWidget {
   });
 
   Widget _buildFallbackAvatar() {
+    if (person.emoji.isNotEmpty) {
+      return Container(
+        width: double.infinity,
+        height: double.infinity,
+        color: Colors.grey.shade200,
+        child: Center(
+          child: Text(
+            person.emoji,
+            style: const TextStyle(fontSize: 50),
+          ),
+        ),
+      );
+    }
+    
     final emojis = [
       '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', 
       '🦁', '🐮', '🐷', '🐸', '🐵', '🐧', '🦉', '🦄', '🐝', '🐛', 

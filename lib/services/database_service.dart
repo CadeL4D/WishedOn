@@ -29,7 +29,7 @@ class DatabaseService {
   }
 
   // Create a new Group and automatically add the owner as the first member
-  Future<String?> createGroup(String name, User owner) async {
+  Future<String?> createGroup(String name, User owner, {String? emoji}) async {
     try {
       final joinCode = _generateJoinCode();
       
@@ -47,6 +47,7 @@ class DatabaseService {
         'id': owner.uid,
         'name': owner.displayName ?? 'Owner',
         'avatarUrl': owner.photoURL ?? '',
+        'emoji': emoji ?? '',
         'isRegisteredOwner': true,
         'joinedAt': FieldValue.serverTimestamp(),
       });
@@ -60,7 +61,7 @@ class DatabaseService {
 
   // Join a Group anonymously using a Join Code
   // Returns a map with groupId and the newly created memberId, or null if failed
-  Future<Map<String, String>?> joinGroupAsGuest(String joinCode, String guestName, {String? birthdate, String? pin}) async {
+  Future<Map<String, String>?> joinGroupAsGuest(String joinCode, String guestName, {String? birthdate, String? pin, String? emoji}) async {
     try {
       // 1. Find the group by code
       final querySnapshot = await _firestore
@@ -82,6 +83,7 @@ class DatabaseService {
         'birthdate': birthdate ?? '',
         'pin': pin ?? '',
         'avatarUrl': '', // Guests have no default avatar
+        'emoji': emoji ?? '',
         'isRegisteredOwner': false,
         'joinedAt': FieldValue.serverTimestamp(),
       });
@@ -206,6 +208,89 @@ class DatabaseService {
           .delete();
     } catch (e) {
       print('Error deleting wishlist item: $e');
+    }
+  }
+
+  // --- Owner/Admin Functions ---
+
+  // Clear all wishlist items for everyone in the group
+  Future<void> resetAllListItems(String groupId) async {
+    try {
+      final membersSnapshot = await _firestore
+          .collection('groups')
+          .doc(groupId)
+          .collection('members')
+          .get();
+
+      for (var memberDoc in membersSnapshot.docs) {
+        final wishlistSnapshot = await memberDoc.reference.collection('wishlist').get();
+        for (var itemDoc in wishlistSnapshot.docs) {
+          await itemDoc.reference.delete();
+        }
+      }
+    } catch (e) {
+      print('Error resetting all list items: $e');
+      throw e;
+    }
+  }
+
+  // Clear all wishlist items for a specific individual in the group
+  Future<void> resetMemberWishlist(String groupId, String memberId) async {
+    try {
+      final wishlistSnapshot = await _firestore
+          .collection('groups')
+          .doc(groupId)
+          .collection('members')
+          .doc(memberId)
+          .collection('wishlist')
+          .get();
+
+      for (var itemDoc in wishlistSnapshot.docs) {
+        await itemDoc.reference.delete();
+      }
+    } catch (e) {
+      print('Error resetting member wishlist: $e');
+      throw e;
+    }
+  }
+
+  // Update a member's PIN
+  Future<void> resetMemberPin(String groupId, String memberId, String newPin) async {
+    try {
+      await _firestore
+          .collection('groups')
+          .doc(groupId)
+          .collection('members')
+          .doc(memberId)
+          .update({
+        'pin': newPin,
+      });
+    } catch (e) {
+      print('Error resetting member PIN: $e');
+      throw e;
+    }
+  }
+
+  // Delete an entire group and all its subcollections entirely
+  Future<void> deleteGroup(String groupId) async {
+    try {
+      final groupRef = _firestore.collection('groups').doc(groupId);
+      final membersSnapshot = await groupRef.collection('members').get();
+
+      // First, delete all wishlists and then the member documents
+      for (var memberDoc in membersSnapshot.docs) {
+        final wishlistSnapshot = await memberDoc.reference.collection('wishlist').get();
+        for (var itemDoc in wishlistSnapshot.docs) {
+          await itemDoc.reference.delete();
+        }
+        await memberDoc.reference.delete();
+      }
+
+      // Finally, delete the group document itself
+      await groupRef.delete();
+    } catch (e) {
+      print('Error deleting group: $e');
+      throw e;
     }
   }
 }

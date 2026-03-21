@@ -93,8 +93,8 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
       ));
     }
     
-    if (widget.isOwner) {
-      pages.add(const GroupSettingsScreen());
+    if (widget.isOwner && _groupId != null) {
+      pages.add(GroupSettingsScreen(groupId: _groupId!));
     }
 
     return Scaffold(
@@ -297,7 +297,8 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
                           return Person(
                             id: doc.id,
                             name: doc.id == _myMemberId ? "${data['name']} (Me)" : data['name'] ?? 'Unknown',
-                            avatarUrl: data['avatarUrl'],
+                            avatarUrl: data['avatarUrl'] ?? '',
+                            emoji: data['emoji'] ?? '',
                             wishlist: [], // Will fetch individually in PersonWishlistScreen
                           );
                         }).toList();
@@ -313,6 +314,7 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
                                   id: members[index].id,
                                   name: members[index].name,
                                   avatarUrl: members[index].avatarUrl,
+                                  emoji: members[index].emoji,
                                   wishlist: wishlistSnapshot.data?.docs ?? [],
                                 );
                                 return PersonCard(

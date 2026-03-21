@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../services/database_service.dart';
 import 'wishlists_screen.dart';
 
@@ -13,8 +14,26 @@ class CreateGroupScreen extends StatefulWidget {
 
 class _CreateGroupScreenState extends State<CreateGroupScreen> {
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emojiController = TextEditingController(text: '🐶');
   final DatabaseService _databaseService = DatabaseService();
   bool _isLoading = false;
+
+  void _showEmojiPicker() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SizedBox(
+          height: 250,
+          child: EmojiPicker(
+            onEmojiSelected: (category, emoji) {
+              _emojiController.text = emoji.emoji;
+              Navigator.pop(context);
+            },
+          ),
+        );
+      }
+    );
+  }
 
   Future<void> _createGroup() async {
     final groupName = _nameController.text.trim();
@@ -34,7 +53,8 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       if (user == null) throw Exception('You must be logged in to create a group.');
 
       // Create the group and get the new group ID
-      final groupId = await _databaseService.createGroup(groupName, user);
+      final emoji = _emojiController.text.trim();
+      final groupId = await _databaseService.createGroup(groupName, user, emoji: emoji);
       
       if (groupId != null) {
         // Save the active context to local storage so the WishlistsScreen knows what to load
@@ -73,6 +93,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _emojiController.dispose();
     super.dispose();
   }
 
@@ -110,19 +131,49 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 40),
-              TextField(
-                controller: _nameController,
-                decoration: InputDecoration(
-                  labelText: 'Group Name',
-                  hintText: 'e.g., Family Christmas 2026',
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
+              Row(
+                children: [
+                  SizedBox(
+                    width: 70,
+                    child: TextField(
+                      controller: _emojiController,
+                      readOnly: true,
+                      canRequestFocus: false,
+                      onTap: _showEmojiPicker,
+                      decoration: InputDecoration(
+                        labelText: 'Icon',
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 12),
+                      ),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 24),
+                      maxLength: 1, // Optional: restricts to 1 character which is usually an emoji
+                      buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+                    ),
                   ),
-                ),
-                textCapitalization: TextCapitalization.words,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _nameController,
+                      decoration: InputDecoration(
+                        labelText: 'Group Name',
+                        hintText: 'e.g., Family Christmas 2026',
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      textCapitalization: TextCapitalization.words,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 40),
               _isLoading

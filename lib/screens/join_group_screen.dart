@@ -1,21 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../services/database_service.dart';
 import 'wishlists_screen.dart';
 
+class DateTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.selection.baseOffset == 0) return newValue;
+
+    String text = newValue.text.replaceAll('/', '');
+    if (text.length > 8) text = text.substring(0, 8); // Max 8 digits
+
+    final buffer = StringBuffer();
+    for (int i = 0; i < text.length; i++) {
+      buffer.write(text[i]);
+      int nonZeroIndex = i + 1;
+      // Add a slash after 2nd and 4th digits
+      if ((nonZeroIndex == 2 || nonZeroIndex == 4) && nonZeroIndex != text.length) {
+        buffer.write('/');
+      }
+    }
+    final formatted = buffer.toString();
+    return newValue.copyWith(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
+
 class JoinGroupScreen extends StatefulWidget {
-  final String? initialGroupId;
-  final String? initialGroupName;
-  final String? initialGroupCode;
+  final String initialGroupId;
+  final String initialGroupName;
+  final String initialGroupCode;
   final String? initialGroupOwnerUid;
 
   const JoinGroupScreen({
     super.key, 
-    this.initialGroupId, 
-    this.initialGroupName, 
-    this.initialGroupCode,
+    required this.initialGroupId, 
+    required this.initialGroupName, 
+    required this.initialGroupCode,
     this.initialGroupOwnerUid,
   });
 
@@ -27,16 +55,15 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _birthdateController = TextEditingController();
   final TextEditingController _pinController = TextEditingController();
-  final TextEditingController _codeController = TextEditingController();
+  final TextEditingController _emojiController = TextEditingController(text: '🐶');
   final DatabaseService _databaseService = DatabaseService();
   
   bool _isLoading = false;
-  bool _stepTwo = false;
   
-  // Group data fetched in Step 1 (or passed in)
-  String? _foundGroupId;
-  String? _foundGroupName;
-  String? _foundGroupOwnerUid;
+  // Group data passed in
+  late final String _foundGroupId;
+  late final String _foundGroupName;
+  late final String? _foundGroupOwnerUid;
   
   // User auth details
   String? _currentUserId;
@@ -45,79 +72,42 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
   void initState() {
     super.initState();
     _currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    
-    if (widget.initialGroupId != null && widget.initialGroupName != null) {
-      _foundGroupId = widget.initialGroupId;
-      _foundGroupName = widget.initialGroupName;
-      _foundGroupOwnerUid = widget.initialGroupOwnerUid;
-      _stepTwo = true;
-      if (widget.initialGroupCode != null) {
-        _codeController.text = widget.initialGroupCode!;
-      }
-    }
+    _foundGroupId = widget.initialGroupId;
+    _foundGroupName = widget.initialGroupName;
+    _foundGroupOwnerUid = widget.initialGroupOwnerUid;
   }
 
-  Future<void> _findGroup() async {
-    final code = _codeController.text.trim().toUpperCase();
-
-    if (code.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a Group Code.')),
-      );
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final groupDoc = await _databaseService.getGroupByCode(code);
-      if (groupDoc != null) {
-        final data = groupDoc.data() as Map<String, dynamic>;
-        setState(() {
-          _foundGroupId = groupDoc.id;
-          _foundGroupName = data['name'];
-          _foundGroupOwnerUid = data['ownerUid'];
-          _stepTwo = true;
-        });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid group code. Please try again.')),
+  void _showEmojiPicker() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SizedBox(
+          height: 250,
+          child: EmojiPicker(
+            onEmojiSelected: (category, emoji) {
+              _emojiController.text = emoji.emoji;
+              Navigator.pop(context);
+            },
+          ),
         );
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error finding group: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
+    );
   }
 
   // Old claim member process, updated to ask for PIN first
   Future<void> _loginAsGuest(String memberId, String storedPin) async {
-    // We already checked this when they tapped, but double check
-    if (_foundGroupId == null) return;
-    
     // Instead of forcing a claim, we just authenticate them locally as this guest
     if (_currentUserId != null) {
       // If the user *is* logged in to a Firebase account, we'll link it for convenience
       try {
-        await _databaseService.claimExistingMember(_foundGroupId!, memberId, _currentUserId!);
+        await _databaseService.claimExistingMember(_foundGroupId, memberId, _currentUserId!);
       } catch (e) {
         // Just log the error, don't stop them from entering the group session
         print('Error silently linking profile: $e');
       }
     }
 
-    _completeJoinFlow(_foundGroupId!, memberId);
+    _completeJoinFlow(_foundGroupId, memberId);
   }
 
   Future<void> _showPinDialog(String memberId, String name, String storedPin) async {
@@ -196,12 +186,123 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
     );
   }
 
+  Future<void> _showCreatePinDialog(String memberId, String name) async {
+    final TextEditingController pinController = TextEditingController();
+    final TextEditingController confirmPinController = TextEditingController();
+    String errorText = '';
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text('Create PIN for $name'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Your PIN was reset by the group owner. Please create a new 4-digit PIN.'),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: pinController,
+                    keyboardType: TextInputType.number,
+                    maxLength: 4,
+                    obscureText: true,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'New PIN',
+                      filled: true,
+                      fillColor: const Color(0xFFF6F8FB),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide.none,
+                      ),
+                      counterText: '',
+                    ),
+                    onChanged: (val) {
+                      if (errorText.isNotEmpty) setDialogState(() => errorText = '');
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirmPinController,
+                    keyboardType: TextInputType.number,
+                    maxLength: 4,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      hintText: 'Confirm PIN',
+                      errorText: errorText.isNotEmpty ? errorText : null,
+                      filled: true,
+                      fillColor: const Color(0xFFF6F8FB),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide.none,
+                      ),
+                      counterText: '',
+                    ),
+                    onChanged: (val) {
+                      if (errorText.isNotEmpty) setDialogState(() => errorText = '');
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final pin1 = pinController.text;
+                    final pin2 = confirmPinController.text;
+                    
+                    if (pin1.length != 4 || int.tryParse(pin1) == null) {
+                      setDialogState(() => errorText = 'PIN must be 4 digits');
+                      return;
+                    }
+                    if (pin1 != pin2) {
+                      setDialogState(() => errorText = 'PINs do not match');
+                      return;
+                    }
+                    
+                    Navigator.pop(context);
+                    
+                    setState(() => _isLoading = true);
+                    try {
+                      await _databaseService.resetMemberPin(_foundGroupId, memberId, pin1);
+                      await _loginAsGuest(memberId, pin1);
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error saving PIN: $e')),
+                        );
+                      }
+                      setState(() => _isLoading = false);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF5D5FEF),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text('Save & Enter', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
+  }
+
   Future<void> _joinAsViewer() async {
-    if (_foundGroupId == null) return;
-    
     // Save active session data locally, but without a memberId
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('activeGroupId', _foundGroupId!);
+    await prefs.setString('activeGroupId', _foundGroupId);
     await prefs.remove('activeMemberId'); // Ensure no member is set
     await prefs.setBool('isOwner', false);
 
@@ -228,6 +329,13 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
       return;
     }
     
+    if (birthdate.isEmpty || birthdate.length != 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid birthdate (MM/DD/YYYY).')),
+      );
+      return;
+    }
+    
     if (pin.length != 4 || int.tryParse(pin) == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a 4-digit PIN.')),
@@ -242,10 +350,11 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
     try {
       // The DatabaseService currently expects both code and name to create the guest profile.
       final result = await _databaseService.joinGroupAsGuest(
-        _codeController.text.trim(), 
+        widget.initialGroupCode, 
         name,
         birthdate: birthdate,
         pin: pin,
+        emoji: _emojiController.text.trim(),
       );
       if (result != null) {
         // If the current user is logged in, we also want to add their UID to the group's memberIds array so it shows on dashboard.
@@ -289,7 +398,7 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
     _nameController.dispose();
     _birthdateController.dispose();
     _pinController.dispose();
-    _codeController.dispose();
+    _emojiController.dispose();
     super.dispose();
   }
 
@@ -298,109 +407,23 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FB),
       appBar: AppBar(
-        title: Text(_stepTwo ? 'Join ${_foundGroupName ?? 'Group'}' : 'Find a Group'),
+        title: Text('Join ${_foundGroupName}'),
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: _stepTwo && !_isLoading
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.black87),
-                onPressed: () {
-                  setState(() {
-                    _stepTwo = false;
-                    _foundGroupId = null;
-                    _foundGroupName = null;
-                    _foundGroupOwnerUid = null;
-                  });
-                },
-              )
-            : const BackButton(color: Colors.black87),
+        leading: const BackButton(color: Colors.black87),
       ),
       body: SafeArea(
-        child: _stepTwo ? _buildStepTwo() : _buildStepOne(),
+        child: _buildMainContent(),
       ),
     );
   }
 
-  Widget _buildStepOne() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Icon(
-            Icons.search,
-            size: 80,
-            color: Color(0xFF5D5FEF),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Enter Group Code',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Ask the group owner for their 6-character code.',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey.shade600,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 40),
-          TextField(
-            controller: _codeController,
-            decoration: InputDecoration(
-              labelText: 'Group Code',
-              hintText: 'e.g., A1B2C3',
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide.none,
-              ),
-            ),
-            textCapitalization: TextCapitalization.characters,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 24, letterSpacing: 8, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 32),
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : ElevatedButton(
-                  onPressed: _findGroup,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF5D5FEF),
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Find Group',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStepTwo() {
+  Widget _buildMainContent() {
     return Column(
       children: [
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: _databaseService.getGroupMembersStream(_foundGroupId!),
+            stream: _databaseService.getGroupMembersStream(_foundGroupId),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -453,13 +476,26 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
                       leading: CircleAvatar(
                         backgroundColor: const Color(0xFF5D5FEF).withAlpha((0.1 * 255).toInt()),
                         child: Text(
-                          name.isNotEmpty ? name[0].toUpperCase() : '?',
-                          style: const TextStyle(color: Color(0xFF5D5FEF), fontWeight: FontWeight.bold),
+                          (data['emoji'] != null && data['emoji'].toString().isNotEmpty) 
+                            ? data['emoji'] 
+                            : (name.isNotEmpty ? name[0].toUpperCase() : '?'),
+                          style: TextStyle(
+                            color: const Color(0xFF5D5FEF), 
+                            fontWeight: FontWeight.bold,
+                            fontSize: (data['emoji'] != null && data['emoji'].toString().isNotEmpty) ? 20 : 14,
+                          ),
                         ),
                       ),
                       title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
                       trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                      onTap: _isLoading ? null : () => _showPinDialog(doc.id, name, data['pin'] ?? ''),
+                      onTap: _isLoading ? null : () {
+                        final storedPin = data['pin'] as String?;
+                        if (storedPin == null || storedPin.isEmpty) {
+                          _showCreatePinDialog(doc.id, name);
+                        } else {
+                          _showPinDialog(doc.id, name, storedPin);
+                        }
+                      },
                     ),
                   );
                 },
@@ -485,28 +521,58 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'Or create a new guest profile:',
+                'Or create a new member profile:',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: _nameController,
-                decoration: InputDecoration(
-                  labelText: 'Your Name',
-                  filled: true,
-                  fillColor: const Color(0xFFF6F8FB),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
+              Row(
+                children: [
+                  SizedBox(
+                    width: 70,
+                    child: TextField(
+                      controller: _emojiController,
+                      readOnly: true,
+                      canRequestFocus: false,
+                      onTap: _showEmojiPicker,
+                      decoration: InputDecoration(
+                        labelText: 'Icon',
+                        filled: true,
+                        fillColor: const Color(0xFFF6F8FB),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 12),
+                      ),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 24),
+                      maxLength: 1,
+                      buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+                    ),
                   ),
-                ),
-                textCapitalization: TextCapitalization.words,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _nameController,
+                      decoration: InputDecoration(
+                        labelText: 'Your Name',
+                        filled: true,
+                        fillColor: const Color(0xFFF6F8FB),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      textCapitalization: TextCapitalization.words,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _birthdateController,
                 decoration: InputDecoration(
-                  labelText: 'Birthdate (Optional)',
+                  labelText: 'Birthdate',
                   hintText: 'MM/DD/YYYY',
                   filled: true,
                   fillColor: const Color(0xFFF6F8FB),
@@ -514,8 +580,28 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
                     borderRadius: BorderRadius.circular(15),
                     borderSide: BorderSide.none,
                   ),
+                  counterText: '',
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.calendar_today, color: Colors.grey),
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime(1900),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) {
+                        final month = picked.month.toString().padLeft(2, '0');
+                        final day = picked.day.toString().padLeft(2, '0');
+                        final year = picked.year.toString();
+                        _birthdateController.text = '$month/$day/$year';
+                      }
+                    },
+                  ),
                 ),
-                keyboardType: TextInputType.datetime,
+                keyboardType: TextInputType.number,
+                inputFormatters: [DateTextFormatter()],
+                maxLength: 10,
               ),
               const SizedBox(height: 12),
               TextField(
