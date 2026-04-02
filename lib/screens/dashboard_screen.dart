@@ -1,12 +1,18 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:http/http.dart' as http;
 import '../services/database_service.dart';
 import 'wishlists_screen.dart';
 import 'create_group_screen.dart';
 import 'join_group_screen.dart';
+import 'account_settings_screen.dart';
+
+/// Paste your Google Apps Script Web App URL here after deployment.
+const String _kFeedbackUrl = 'https://script.google.com/macros/s/AKfycbyicIcomN9X6qHU7WqDe4DmQ3_rTfwUI0PWYDj3nmv2Q8vSVOwjowGEF2Au3ogplAvkaA/exec';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -105,6 +111,151 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     }
+  }
+  Future<void> _submitFeedback(String text, String tag) async {
+    if (_kFeedbackUrl == 'YOUR_APPS_SCRIPT_URL_HERE') return;
+    
+    // We CANNOT use application/json here. Flutter Web runs in a browser. 
+    // Sending JSON triggers a CORS preflight OPTIONS request, which 
+    // Google Apps Script usually rejects/fails on. Form data avoids the preflight entirely.
+    await http.post(
+      Uri.parse(_kFeedbackUrl),
+      body: {'feedback': text, 'tag': tag},
+    );
+  }
+
+  void _showFeedbackSheet() {
+    final controller = TextEditingController();
+    bool isSubmitting = false;
+    String selectedTag = 'Comment';
+    final tags = ['Comment', 'Bug', 'Wanted Feature', 'Good Feature'];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 24, right: 24, top: 24,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      const Text('Leave Feedback',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Anonymous — no personal data is collected.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    maxLines: 4,
+                    maxLength: 500,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'What can we improve? What do you love?',
+                      filled: true,
+                      fillColor: const Color(0xFFF6F8FB),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.all(16),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: tags.map((tag) {
+                      final isSelected = selectedTag == tag;
+                      return ChoiceChip(
+                        label: Text(tag),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          if (selected) {
+                            setSheetState(() => selectedTag = tag);
+                          }
+                        },
+                        selectedColor: const Color(0xFF5D5FEF).withOpacity(0.2),
+                        backgroundColor: Colors.white,
+                        side: BorderSide(
+                          color: isSelected ? const Color(0xFF5D5FEF) : Colors.grey.shade300,
+                        ),
+                        labelStyle: TextStyle(
+                          color: isSelected ? const Color(0xFF5D5FEF) : Colors.black87,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  isSubmitting
+                      ? const Center(child: CircularProgressIndicator(color: Color(0xFF5D5FEF)))
+                      : ElevatedButton(
+                          onPressed: () async {
+                            final text = controller.text.trim();
+                            if (text.isEmpty) return;
+                            setSheetState(() => isSubmitting = true);
+                            try {
+                              await _submitFeedback(text, selectedTag);
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Thanks for your feedback! 🙏'),
+                                    backgroundColor: Color(0xFF00C48C),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Could not send feedback. Try again later.')),
+                                );
+                              }
+                              setSheetState(() => isSubmitting = false);
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF5D5FEF),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: const Text('Submit',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16)),
+                        ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showJoinGroupDialog(BuildContext context) {
@@ -218,6 +369,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         elevation: 0,
         actions: [
           IconButton(
+            icon: const Icon(Icons.settings_outlined, color: Colors.black87),
+            tooltip: 'Account Settings',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AccountSettingsScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.logout, color: Colors.black87),
             onPressed: () async {
               await FirebaseAuth.instance.signOut();
@@ -312,7 +475,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         );
                       },
                     ),
-                    const SliverPadding(padding: EdgeInsets.only(bottom: 40)),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _showFeedbackSheet,
+                            icon: const Text('💬', style: TextStyle(fontSize: 16)),
+                            label: Text(
+                              'Leave Feedback',
+                              style: TextStyle(
+                                color: Colors.grey.shade700,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              backgroundColor: Colors.grey.withOpacity(0.05),
+                              side: BorderSide(color: Colors.grey.withOpacity(0.3), width: 2),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
                   ],
                 ),
               ),

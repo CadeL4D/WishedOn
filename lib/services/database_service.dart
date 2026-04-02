@@ -20,6 +20,65 @@ class DatabaseService {
     }
   }
 
+  // Update user profile fields in Firestore
+  Future<void> updateUserProfile(
+    String uid, {
+    String? displayName,
+    String? emoji,
+    String? birthday,
+  }) async {
+    final data = <String, dynamic>{};
+    if (displayName != null) data['displayName'] = displayName;
+    if (emoji != null) data['emoji'] = emoji;
+    if (birthday != null) data['birthday'] = birthday;
+    if (data.isEmpty) return;
+    await _firestore.collection('users').doc(uid).set(data, SetOptions(merge: true));
+  }
+
+  // Propagate the user's emoji to every group member doc they own or have claimed
+  Future<void> updateEmojiAcrossGroups(String uid, String emoji) async {
+    try {
+      // Find all groups this user is a member of
+      final groupsSnap = await _firestore
+          .collection('groups')
+          .where('memberIds', arrayContains: uid)
+          .get();
+
+      for (final groupDoc in groupsSnap.docs) {
+        final groupId = groupDoc.id;
+        final batch = _firestore.batch();
+        bool batchHasWrites = false;
+
+        // 1. Owner doc — keyed directly by uid
+        final ownerRef = _firestore
+            .collection('groups').doc(groupId)
+            .collection('members').doc(uid);
+        final ownerSnap = await ownerRef.get();
+        if (ownerSnap.exists) {
+          batch.update(ownerRef, {'emoji': emoji});
+          batchHasWrites = true;
+        }
+
+        // 2. Any guest profile this user has claimed
+        final claimedSnap = await _firestore
+            .collection('groups').doc(groupId)
+            .collection('members')
+            .where('claimedByUid', isEqualTo: uid)
+            .get();
+        for (final memberDoc in claimedSnap.docs) {
+          batch.update(memberDoc.reference, {'emoji': emoji});
+          batchHasWrites = true;
+        }
+
+        if (batchHasWrites) await batch.commit();
+      }
+    } catch (e) {
+      print('Error updating emoji across groups: $e');
+      rethrow;
+    }
+  }
+
+
   // Generate a random 6 character alphanumeric join code
   String _generateJoinCode() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -192,6 +251,22 @@ class DatabaseService {
           .set(item.toJson());
     } catch (e) {
       print('Error adding wishlist item: $e');
+    }
+  }
+
+  // Update the purchased status of a wishlist item
+  Future<void> updateWishlistItemStatus(String groupId, String memberId, String itemId, bool isPurchased) async {
+    try {
+      await _firestore
+          .collection('groups')
+          .doc(groupId)
+          .collection('members')
+          .doc(memberId)
+          .collection('wishlist')
+          .doc(itemId)
+          .update({'isPurchased': isPurchased});
+    } catch (e) {
+      print('Error updating wishlist item status: $e');
     }
   }
 

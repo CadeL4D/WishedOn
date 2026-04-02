@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/person.dart';
 import '../models/my_list_item.dart';
 import '../services/database_service.dart';
@@ -103,42 +104,100 @@ class _PersonWishlistScreenState extends State<PersonWishlistScreen> {
                         final item = items[index];
                         final domain = item.domain ?? '';
                         final logoUrl = _getLogoUrl(domain);
+                        final bool isPurchased = item.isPurchased;
 
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          child: ListTile(
-                            leading: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.grey[200],
-                                border: Border.all(color: Colors.grey[300]!),
+                        return Dismissible(
+                          key: Key(item.id),
+                          direction: DismissDirection.horizontal,
+                          background: Container(
+                            alignment: Alignment.centerLeft,
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            color: Colors.green,
+                            child: const Icon(Icons.check, color: Colors.white),
+                          ),
+                          secondaryBackground: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            color: Colors.grey,
+                            child: const Icon(Icons.undo, color: Colors.white),
+                          ),
+                          confirmDismiss: (direction) async {
+                            if (direction == DismissDirection.startToEnd) {
+                              if (!isPurchased) {
+                                await _databaseService.updateWishlistItemStatus(_groupId!, widget.person.id, item.id, true);
+                              }
+                            } else if (direction == DismissDirection.endToStart) {
+                              if (isPurchased) {
+                                await _databaseService.updateWishlistItemStatus(_groupId!, widget.person.id, item.id, false);
+                              }
+                            }
+                            return false; // don't actually dismiss the widget from the list, since stream builder updates it
+                          },
+                          child: Opacity(
+                            opacity: isPurchased ? 0.5 : 1.0,
+                            child: Card(
+                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              child: ListTile(
+                                leading: Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isPurchased ? Colors.green : Colors.grey[200],
+                                    border: Border.all(color: isPurchased ? Colors.green : Colors.grey[300]!),
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: isPurchased
+                                      ? const Icon(Icons.check, color: Colors.white)
+                                      : (domain.isNotEmpty && logoUrl != null
+                                          ? logoUrl.endsWith('.svg')
+                                              ? SvgPicture.network(logoUrl, fit: BoxFit.contain)
+                                              : Image.network(
+                                                  logoUrl,
+                                                  fit: BoxFit.contain,
+                                                  errorBuilder: (context, error, stackTrace) =>
+                                                      const Icon(Icons.link, color: Colors.grey),
+                                                )
+                                          : const Icon(Icons.link, color: Colors.grey)),
+                                ),
+                                title: Text(
+                                  item.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    decoration: isPurchased ? TextDecoration.lineThrough : null,
+                                  ),
+                                ),
+                                subtitle: Text('\$${item.price.toStringAsFixed(2)}'),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.open_in_new, color: Colors.blueAccent),
+                                      onPressed: () async {
+                                        String finalUrl = item.url.trim();
+                                        if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+                                          finalUrl = 'https://$finalUrl';
+                                        }
+                                        final uri = Uri.tryParse(finalUrl);
+                                        if (uri != null) {
+                                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                        }
+                                      },
+                                    ),
+                                    IconButton(
+                                      icon: Icon(
+                                        isPurchased ? Icons.remove_shopping_cart : Icons.shopping_cart_outlined,
+                                        color: isPurchased ? Colors.green : Colors.grey,
+                                      ),
+                                      onPressed: () {
+                                        _databaseService.updateWishlistItemStatus(_groupId!, widget.person.id, item.id, !isPurchased);
+                                      },
+                                    ),
+                                  ],
+                                ),
                               ),
-                              clipBehavior: Clip.antiAlias,
-                              child: domain.isNotEmpty && logoUrl != null
-                                  ? logoUrl.endsWith('.svg')
-                                      ? SvgPicture.network(
-                                          logoUrl,
-                                          fit: BoxFit.contain,
-                                        )
-                                      : Image.network(
-                                          logoUrl,
-                                          fit: BoxFit.contain,
-                                          errorBuilder: (context, error,
-                                                  stackTrace) =>
-                                              const Icon(Icons.link,
-                                                  color: Colors.grey),
-                                        )
-                                  : const Icon(Icons.link, color: Colors.grey),
                             ),
-                            title: Text(item.name,
-                                maxLines: 2, overflow: TextOverflow.ellipsis),
-                            subtitle:
-                                Text('\$${item.price.toStringAsFixed(2)}'),
-                            trailing: const Icon(Icons.shopping_bag_outlined,
-                                color: Colors.grey),
                           ),
                         );
                       },

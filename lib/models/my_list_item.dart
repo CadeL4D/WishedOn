@@ -4,6 +4,7 @@ class MyListItem {
   final double price;
   final String url;
   final String? domain;
+  final bool isPurchased;
 
   MyListItem({
     required this.id,
@@ -11,6 +12,7 @@ class MyListItem {
     required this.price,
     required this.url,
     this.domain,
+    this.isPurchased = false,
   });
 
   Map<String, dynamic> toJson() {
@@ -20,6 +22,7 @@ class MyListItem {
       'price': price,
       'url': url,
       'domain': domain,
+      'isPurchased': isPurchased,
     };
   }
 
@@ -30,6 +33,8 @@ class MyListItem {
       price: json['price'].toDouble(),
       url: json['url'],
       domain: json['domain'],
+      isPurchased: json['isPurchased'] ?? false,
     );
   }
 }
+

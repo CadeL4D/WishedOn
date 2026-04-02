@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../firebase_options.dart';
 import '../services/database_service.dart';
 import 'register_screen.dart';
@@ -44,9 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     try {
       final googleSignIn = GoogleSignIn(
-        clientId: Platform.isIOS
-            ? DefaultFirebaseOptions.ios.iosClientId
-            : null,
+        clientId: kIsWeb ? null : DefaultFirebaseOptions.ios.iosClientId,
       );
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) {

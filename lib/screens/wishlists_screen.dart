@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 import '../models/category.dart';
 import '../models/person.dart';
 import '../models/my_list_item.dart';
@@ -30,6 +31,149 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
   String? _groupId;
   String? _myMemberId;
   bool _isLoading = true;
+  bool _isCodeCopied = false;
+
+  Future<void> _submitFeedback(String text, String tag) async {
+    const String feedbackUrl = 'https://script.google.com/macros/s/AKfycbyicIcomN9X6qHU7WqDe4DmQ3_rTfwUI0PWYDj3nmv2Q8vSVOwjowGEF2Au3ogplAvkaA/exec';
+    await http.post(
+      Uri.parse(feedbackUrl),
+      body: {'feedback': text, 'tag': tag},
+    );
+  }
+
+  void _showFeedbackSheet() {
+    final controller = TextEditingController();
+    bool isSubmitting = false;
+    String selectedTag = 'Comment';
+    final tags = ['Comment', 'Bug', 'Wanted Feature', 'Good Feature'];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 24, right: 24, top: 24,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      const Text('Leave Feedback',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Anonymous — no personal data is collected.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    maxLines: 4,
+                    maxLength: 500,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'What can we improve? What do you love?',
+                      filled: true,
+                      fillColor: const Color(0xFFF6F8FB),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.all(16),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: tags.map((tag) {
+                      final isSelected = selectedTag == tag;
+                      return ChoiceChip(
+                        label: Text(tag),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          if (selected) {
+                            setSheetState(() => selectedTag = tag);
+                          }
+                        },
+                        selectedColor: const Color(0xFF5D5FEF).withOpacity(0.2),
+                        backgroundColor: Colors.white,
+                        side: BorderSide(
+                          color: isSelected ? const Color(0xFF5D5FEF) : Colors.grey.shade300,
+                        ),
+                        labelStyle: TextStyle(
+                          color: isSelected ? const Color(0xFF5D5FEF) : Colors.black87,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  isSubmitting
+                      ? const Center(child: CircularProgressIndicator(color: Color(0xFF5D5FEF)))
+                      : ElevatedButton(
+                          onPressed: () async {
+                            final text = controller.text.trim();
+                            if (text.isEmpty) return;
+                            setSheetState(() => isSubmitting = true);
+                            try {
+                              await _submitFeedback(text, selectedTag);
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Thanks for your feedback! 🙏'),
+                                    backgroundColor: Color(0xFF00C48C),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Could not send feedback. Try again later.')),
+                                );
+                              }
+                              setSheetState(() => isSubmitting = false);
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF5D5FEF),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: const Text('Submit',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16)),
+                        ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   void initState() {
@@ -215,39 +359,74 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
                         
                         if (joinCode.isEmpty) return const SizedBox.shrink();
 
-                        return GestureDetector(
-                          onTap: () async {
-                            await Clipboard.setData(ClipboardData(text: joinCode));
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Group code copied to clipboard!'),
-                                  duration: Duration(seconds: 2),
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: _showFeedbackSheet,
+                              icon: const Text('💬', style: TextStyle(fontSize: 14)),
+                              label: Text(
+                                'Feedback',
+                                style: TextStyle(
+                                  color: Colors.grey.shade700,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
                                 ),
-                              );
-                            }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF5D5FEF).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.group, size: 16, color: Color(0xFF5D5FEF)),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'Code: $joinCode',
-                                  style: const TextStyle(
-                                    color: Color(0xFF5D5FEF),
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                backgroundColor: Colors.grey.withOpacity(0.05),
+                                side: BorderSide(color: Colors.grey.withOpacity(0.3), width: 2),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () async {
+                                await Clipboard.setData(ClipboardData(text: joinCode));
+                                if (context.mounted) {
+                                  setState(() {
+                                    _isCodeCopied = true;
+                                  });
+                                  Future.delayed(const Duration(seconds: 2), () {
+                                    if (mounted) {
+                                      setState(() {
+                                        _isCodeCopied = false;
+                                      });
+                                    }
+                                  });
+                                }
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: _isCodeCopied ? const Color(0xFF00C48C).withOpacity(0.1) : const Color(0xFF5D5FEF).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (!_isCodeCopied)
+                                      const Icon(Icons.group, size: 16, color: Color(0xFF5D5FEF)),
+                                    if (_isCodeCopied)
+                                      const Icon(Icons.check, size: 16, color: Color(0xFF00C48C)),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      _isCodeCopied ? 'Copied!' : 'Code: $joinCode',
+                                      style: TextStyle(
+                                        color: _isCodeCopied ? const Color(0xFF00C48C) : const Color(0xFF5D5FEF),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         );
                       },
                     ),
