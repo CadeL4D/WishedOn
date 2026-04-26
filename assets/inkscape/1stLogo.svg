@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="1024"
+   height="1024"
+   viewBox="0 0 270.93333 270.93333"
+   version="1.1"
+   id="svg1"
+   inkscape:export-filename="..\..\ios\Runner\Assets.xcassets\AppIcon.appiconset\Icon-App-76x76@2x.png"
+   inkscape:export-xdpi="14.25"
+   inkscape:export-ydpi="14.25"
+   inkscape:version="1.4 (86a8ad7, 2024-10-11)"
+   sodipodi:docname="1stLogo.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="0.75811588"
+     inkscape:cx="451.11837"
+     inkscape:cy="549.38831"
+     inkscape:window-width="1920"
+     inkscape:window-height="1111"
+     inkscape:window-x="-9"
+     inkscape:window-y="-9"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <ellipse
+       style="fill:#d375e9;fill-opacity:1;stroke:none;stroke-width:0.264583;stroke-linejoin:round"
+       id="path1"
+       cx="135.46666"
+       cy="135.46666"
+       rx="105.622"
+       ry="105.62231" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:102.306px;line-height:0.9;font-family:'Liberation Sans';-inkscape-font-specification:'Liberation Sans Bold';text-align:center;letter-spacing:-0.0144961px;word-spacing:0px;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#ffffff;stroke:none;stroke-width:10;stroke-linejoin:round;stroke-dasharray:none"
+       x="135.51784"
+       y="171.98991"
+       id="text3"><tspan
+         sodipodi:role="line"
+         id="tspan3"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:102.306px;line-height:0.9;font-family:'Segoe Fluent Icons';-inkscape-font-specification:'Segoe Fluent Icons';fill:#ffffff;stroke:#ffffff;stroke-width:10;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none"
+         x="135.51059"
+         y="171.98991">W</tspan></text>
+    <path
+       sodipodi:type="star"
+       style="fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:0;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none"
+       id="path3"
+       inkscape:flatsided="false"
+       sodipodi:sides="5"
+       sodipodi:cx="191.60165"
+       sodipodi:cy="199.62868"
+       sodipodi:r1="9.5104561"
+       sodipodi:r2="14.869222"
+       sodipodi:arg1="-0.93198138"
+       sodipodi:arg2="-0.29427844"
+       inkscape:rounded="0.2261479"
+       inkscape:randomized="0"
+       d="m 197.27221,191.99366 c 1.65525,1.25363 7.93858,1.34081 8.55946,3.32221 0.60929,1.94438 -4.54832,5.4215 -5.21638,7.34648 -0.68077,1.96162 1.17796,7.96437 -0.51459,9.16715 -1.66094,1.18031 -6.56166,-2.65038 -8.59887,-2.69089 -2.07599,-0.0413 -7.21056,3.58144 -8.8775,2.3434 -1.6358,-1.21491 0.493,-7.05952 -0.098,-9.00954 -0.60225,-1.98714 -5.63433,-5.75093 -4.972,-7.71885 0.64996,-1.93117 6.86635,-1.71265 8.5383,-2.87731 1.70377,-1.18684 3.72835,-7.13571 5.80463,-7.11392 2.03749,0.0214 3.75064,6.00105 5.37496,7.23127 z"
+       inkscape:transform-center-x="-0.037929526"
+       inkscape:transform-center-y="-0.62818389"
+       transform="matrix(0.60691109,-0.01748277,0.01748277,0.60691109,50.581392,64.527592)" />
+  </g>
+</svg>
