@@ -6,7 +6,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import '../models/category.dart';
 import '../models/person.dart';
-import '../models/my_list_item.dart';
 import '../widgets/person_card.dart';
 import '../services/database_service.dart';
 import 'person_wishlist_screen.dart';
@@ -49,7 +48,6 @@ class WishlistsScreen extends StatefulWidget {
 class _WishlistsScreenState extends State<WishlistsScreen> {
   final DatabaseService _databaseService = DatabaseService();
   int _selectedIndex = 0;
-  int _selectedTopTab = 0;
   String? _groupId;
   String? _myMemberId;
   bool _isLoading = true;
@@ -478,17 +476,6 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              // Tabs
-              Row(
-                children: [
-                  _buildTab('All', 0),
-                  const SizedBox(width: 20),
-                  _buildTab('Bought', 1),
-                  const SizedBox(width: 20),
-                  _buildTab('Remaining', 2),
-                ],
-              ),
-              const SizedBox(height: 20),
               // Horizontal ListView wrapping a StreamBuilder
               SizedBox(
                 height: 200,
@@ -779,49 +766,5 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
     );
   }
 
-  Widget _buildTab(String text, int index) {
-    bool isSelected = _selectedTopTab == index;
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedTopTab = index;
-        });
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-              color: isSelected ? Colors.black : Colors.grey[500],
-            ),
-          ),
-          const SizedBox(height: 4),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            transitionBuilder: (Widget child, Animation<double> animation) {
-              return ScaleTransition(scale: animation, child: child);
-            },
-            child: isSelected
-                ? Container(
-                    key: const ValueKey('selected'),
-                    height: 6,
-                    width: 6,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF5D5FEF),
-                      shape: BoxShape.circle,
-                    ),
-                  )
-                : const SizedBox(
-                    key: ValueKey('unselected'),
-                    height: 6,
-                    width: 6,
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
+
 }
