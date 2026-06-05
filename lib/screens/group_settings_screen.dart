@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/database_service.dart';
-import 'login_screen.dart'; // To navigate out if group deleted
+import 'dashboard_screen.dart';
 
 class GroupSettingsScreen extends StatefulWidget {
   final String groupId;
@@ -169,7 +169,11 @@ class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
 
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          MaterialPageRoute(
+            builder: (context) => const DashboardScreen(
+              messageToShow: 'Group deleted successfully.',
+            ),
+          ),
           (route) => false,
         );
       }
