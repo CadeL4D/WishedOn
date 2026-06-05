@@ -1,13 +1,16 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../models/my_list_item.dart';
 import '../services/database_service.dart';
+import 'login_screen.dart';
+import 'dashboard_screen.dart';
 
 class MyListScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -23,6 +26,8 @@ class _MyListScreenState extends State<MyListScreen> {
   String? _groupId;
   String? _memberId;
   bool _isLoading = true;
+  bool _isOwner = false;
+  String _currentEmoji = '😊';
 
   @override
   void initState() {
@@ -32,9 +37,30 @@ class _MyListScreenState extends State<MyListScreen> {
 
   Future<void> _loadSessionInfo() async {
     final prefs = await SharedPreferences.getInstance();
+    final gId = prefs.getString('activeGroupId');
+    final mId = prefs.getString('activeMemberId');
+
+    if (gId != null && mId != null) {
+      try {
+        final memberSnap = await FirebaseFirestore.instance
+            .collection('groups')
+            .doc(gId)
+            .collection('members')
+            .doc(mId)
+            .get();
+        if (memberSnap.exists) {
+          final data = memberSnap.data()!;
+          _isOwner = data['isRegisteredOwner'] ?? false;
+          _currentEmoji = data['emoji'] ?? '😊';
+        }
+      } catch (e) {
+        debugPrint('Error loading member info: $e');
+      }
+    }
+
     setState(() {
-      _groupId = prefs.getString('activeGroupId');
-      _memberId = prefs.getString('activeMemberId');
+      _groupId = gId;
+      _memberId = mId;
       _isLoading = false;
     });
   }
@@ -100,6 +126,255 @@ class _MyListScreenState extends State<MyListScreen> {
     return logos[domain];
   }
 
+  void _changeEmoji() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SizedBox(
+          height: 300,
+          child: EmojiPicker(
+            onEmojiSelected: (category, emoji) async {
+              Navigator.pop(context); // close emoji picker
+              Navigator.pop(context); // close settings menu
+              
+              setState(() {
+                _currentEmoji = emoji.emoji;
+              });
+
+              if (_groupId != null && _memberId != null) {
+                try {
+                  await FirebaseFirestore.instance
+                      .collection('groups')
+                      .doc(_groupId!)
+                      .collection('members')
+                      .doc(_memberId!)
+                      .update({'emoji': emoji.emoji});
+                  
+                  // If the user is logged in, also update their master user document
+                  final user = FirebaseAuth.instance.currentUser;
+                  if (user != null && _memberId == user.uid) {
+                    await _databaseService.updateUserProfile(user.uid, emoji: emoji.emoji);
+                  }
+
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Emoji updated successfully!'),
+                      backgroundColor: Color(0xFF00C48C),
+                    ),
+                  );
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error updating emoji: $e')),
+                  );
+                }
+              }
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _resetMyList() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset Wishlist'),
+        content: const Text('Are you sure you want to clear your wishlist? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Clear List'),
+          ),
+        ],
+      ),
+    );
+
+    if (!context.mounted) return;
+    if (confirm != true) return;
+    if (_groupId == null || _memberId == null) return;
+
+    try {
+      await _databaseService.resetMemberWishlist(_groupId!, _memberId!);
+      if (!context.mounted) return;
+      Navigator.pop(context); // close settings menu
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Your wishlist has been cleared.')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error clearing wishlist: $e')),
+      );
+    }
+  }
+
+  Future<void> _leaveGroup() async {
+    if (_isOwner) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Cannot Leave Group'),
+          content: const Text('As the owner, you cannot leave this group. If you want to disband the group, you can delete it from the Group Settings page.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Leave Group'),
+        content: const Text('Are you sure you want to leave this group? Your wishlist and profile will be permanently deleted from the group.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+
+    if (!context.mounted) return;
+    if (confirm != true) return;
+    if (_groupId == null || _memberId == null) return;
+
+    try {
+      await _databaseService.removeMember(_groupId!, _memberId!);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('activeGroupId');
+      await prefs.remove('activeMemberId');
+
+      if (!context.mounted) return;
+      Navigator.pop(context); // close settings menu
+      
+      final isSignedIn = FirebaseAuth.instance.currentUser != null;
+
+      if (isSignedIn) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => const DashboardScreen(
+              messageToShow: 'You have left the group.',
+            ),
+          ),
+          (route) => false,
+        );
+      } else {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error leaving group: $e')),
+      );
+    }
+  }
+
+  void _showSettingsMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'List Settings',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF5D5FEF).withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      _currentEmoji,
+                      style: const TextStyle(fontSize: 20),
+                    ),
+                  ),
+                  title: const Text('Change Emoji', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Change the emoji shown on the group menu'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: _changeEmoji,
+                ),
+                const Divider(),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.clear_all, color: Colors.orange),
+                  ),
+                  title: const Text('Reset My Wishlist', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Clear all items from your wishlist'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: _resetMyList,
+                ),
+                const Divider(),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.exit_to_app, color: Colors.red),
+                  ),
+                  title: const Text(
+                    'Leave Group', 
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                  ),
+                  subtitle: const Text('Delete your wishlist and leave this group'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.red),
+                  onTap: _leaveGroup,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -118,6 +393,12 @@ class _MyListScreenState extends State<MyListScreen> {
             }
           },
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined, color: Colors.black87),
+            onPressed: () => _showSettingsMenu(context),
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
