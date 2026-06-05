@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -102,16 +103,89 @@ class _JoinCodeResolverState extends State<_JoinCodeResolver> {
 
       if (groupDoc != null) {
         final data = groupDoc.data() as Map<String, dynamic>;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => JoinGroupScreen(
-              initialGroupId: groupDoc.id,
-              initialGroupName: data['name'] ?? 'Unknown Group',
-              initialGroupCode: widget.joinCode,
+        final user = FirebaseAuth.instance.currentUser;
+
+        if (user != null) {
+          final memberIds = List<String>.from(data['memberIds'] ?? []);
+          final isAlreadyMember = memberIds.contains(user.uid);
+          String messageToShow = '';
+
+          if (!isAlreadyMember) {
+            // Automatically join them
+            final groupRef = FirebaseFirestore.instance.collection('groups').doc(groupDoc.id);
+            
+            // 1. Add UID to memberIds array
+            await groupRef.update({
+              'memberIds': FieldValue.arrayUnion([user.uid]),
+            });
+
+            // 2. Fetch user's profile details from 'users' collection
+            final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+            final birthday = (userDoc.data()?['birthday'] as String?) ?? '';
+            final emoji = (userDoc.data()?['emoji'] as String?) ?? '';
+
+            // 3. Create member doc
+            await groupRef.collection('members').doc(user.uid).set({
+              'id': user.uid,
+              'name': user.displayName ?? 'Member',
+              'avatarUrl': user.photoURL ?? '',
+              'emoji': emoji,
+              'birthday': birthday,
+              'isRegisteredOwner': false,
+              'joinedAt': FieldValue.serverTimestamp(),
+            });
+
+            messageToShow = 'Successfully joined "${data['name'] ?? 'Group'}"!';
+          } else {
+            messageToShow = 'Welcome back to "${data['name'] ?? 'Group'}"!';
+          }
+
+          // Save to SharedPreferences so the session is initialized for when they select/enter the group
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('activeGroupId', groupDoc.id);
+          
+          // Determine the correct activeMemberId
+          String activeMemberId = user.uid; // default to direct member doc ID
+          final isOwner = data['ownerUid'] == user.uid;
+          
+          if (!isOwner) {
+            // Double check if they had a claimed guest profile instead of a direct member doc
+            final claimedQS = await FirebaseFirestore.instance
+                .collection('groups')
+                .doc(groupDoc.id)
+                .collection('members')
+                .where('claimedByUid', isEqualTo: user.uid)
+                .get();
+            if (claimedQS.docs.isNotEmpty) {
+              activeMemberId = claimedQS.docs.first.id;
+            }
+          }
+          
+          await prefs.setString('activeMemberId', activeMemberId);
+          await prefs.setBool('isOwner', isOwner);
+
+          if (!mounted) return;
+
+          // Go to the groups page (DashboardScreen)
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DashboardScreen(messageToShow: messageToShow),
             ),
-          ),
-        );
+          );
+        } else {
+          // User is not signed in, show JoinGroupScreen
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => JoinGroupScreen(
+                initialGroupId: groupDoc.id,
+                initialGroupName: data['name'] ?? 'Unknown Group',
+                initialGroupCode: widget.joinCode,
+              ),
+            ),
+          );
+        }
       } else {
         setState(() {
           _isLoading = false;

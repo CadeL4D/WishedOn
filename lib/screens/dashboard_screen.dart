@@ -15,7 +15,8 @@ import 'account_settings_screen.dart';
 const String _kFeedbackUrl = 'https://script.google.com/macros/s/AKfycbyicIcomN9X6qHU7WqDe4DmQ3_rTfwUI0PWYDj3nmv2Q8vSVOwjowGEF2Au3ogplAvkaA/exec';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final String? messageToShow;
+  const DashboardScreen({super.key, this.messageToShow});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -29,6 +30,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _loadUser();
+    if (widget.messageToShow != null && widget.messageToShow!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.messageToShow!),
+            backgroundColor: const Color(0xFF00C48C),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      });
+    }
   }
 
   Future<void> _loadUser() async {
