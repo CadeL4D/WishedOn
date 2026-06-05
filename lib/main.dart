@@ -41,24 +41,35 @@ class MyApp extends StatelessWidget {
           Theme.of(context).textTheme,
         ),
       ),
-      onGenerateRoute: (settings) {
-        final uri = Uri.parse(settings.name ?? '/');
-
-        // Handle /join/<CODE> deep link
-        if (uri.pathSegments.length == 2 &&
-            uri.pathSegments[0] == 'join' &&
-            uri.pathSegments[1].isNotEmpty) {
-          final joinCode = uri.pathSegments[1].toUpperCase();
-          return MaterialPageRoute(
-            builder: (context) => _JoinCodeResolver(joinCode: joinCode),
-          );
-        }
-
-        // Default route — use AuthWrapper for all other paths
-        return MaterialPageRoute(
-          builder: (context) => const AuthWrapper(),
-        );
+      onGenerateRoute: _generateRoute,
+      onGenerateInitialRoutes: (String initialRoute) {
+        // Only generate a single route for the full URL path.
+        // Without this, Flutter splits "/join/ABC123" into multiple routes
+        // (/, /join/, /join/ABC123) and AuthWrapper on "/" redirects away
+        // before the join route ever loads.
+        return [
+          _generateRoute(RouteSettings(name: initialRoute))!,
+        ];
       },
+    );
+  }
+
+  static Route<dynamic>? _generateRoute(RouteSettings settings) {
+    final uri = Uri.parse(settings.name ?? '/');
+
+    // Handle /join/<CODE> deep link
+    if (uri.pathSegments.length == 2 &&
+        uri.pathSegments[0] == 'join' &&
+        uri.pathSegments[1].isNotEmpty) {
+      final joinCode = uri.pathSegments[1].toUpperCase();
+      return MaterialPageRoute(
+        builder: (context) => _JoinCodeResolver(joinCode: joinCode),
+      );
+    }
+
+    // Default route — use AuthWrapper for all other paths
+    return MaterialPageRoute(
+      builder: (context) => const AuthWrapper(),
     );
   }
 }
