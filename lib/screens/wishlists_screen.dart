@@ -422,7 +422,7 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
                               onSelected: (value) async {
                                 String textToCopy;
                                 if (value == 'link') {
-                                  textToCopy = 'https://wishonit-33f0a.web.app/join/$joinCode';
+                                  textToCopy = 'https://wishedon.com/#/join/$joinCode';
                                 } else {
                                   textToCopy = joinCode;
                                 }

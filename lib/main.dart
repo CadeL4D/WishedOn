@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_web_plugins/url_strategy.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -15,10 +14,7 @@ import 'services/database_service.dart';
 void main() async {
   // Ensure that plugin services are initialized before Firebase setup
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Use path-based URLs (no # hash) for clean web URLs
-  usePathUrlStrategy();
-
+  
   // Initialize Firebase using the environment-specific options
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
