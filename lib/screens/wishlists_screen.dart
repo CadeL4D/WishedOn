@@ -52,6 +52,7 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
   String? _myMemberId;
   bool _isLoading = true;
   bool _isCodeCopied = false;
+  String _copiedLabel = 'Copied!';
   static const List<String> _monthLabels = [
     'JAN',
     'FEB',
@@ -417,12 +418,19 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            GestureDetector(
-                              onTap: () async {
-                                await Clipboard.setData(ClipboardData(text: joinCode));
+                            PopupMenuButton<String>(
+                              onSelected: (value) async {
+                                String textToCopy;
+                                if (value == 'link') {
+                                  textToCopy = 'https://wishonit-33f0a.web.app/join/$joinCode';
+                                } else {
+                                  textToCopy = joinCode;
+                                }
+                                await Clipboard.setData(ClipboardData(text: textToCopy));
                                 if (context.mounted) {
                                   setState(() {
                                     _isCodeCopied = true;
+                                    _copiedLabel = value == 'link' ? 'Link Copied!' : 'Code Copied!';
                                   });
                                   Future.delayed(const Duration(seconds: 2), () {
                                     if (mounted) {
@@ -433,11 +441,39 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
                                   });
                                 }
                               },
+                              itemBuilder: (context) => [
+                                PopupMenuItem<String>(
+                                  value: 'link',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.link, size: 18, color: Colors.grey.shade700),
+                                      const SizedBox(width: 10),
+                                      const Text('Copy Invite Link', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuItem<String>(
+                                  value: 'code',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.copy, size: 18, color: Colors.grey.shade700),
+                                      const SizedBox(width: 10),
+                                      const Text('Copy Group Code', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              offset: const Offset(0, 40),
+                              color: Colors.white,
+                              elevation: 8,
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 200),
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: _isCodeCopied ? const Color(0xFF00C48C).withOpacity(0.1) : const Color(0xFF5D5FEF).withOpacity(0.1),
+                                  color: _isCodeCopied ? const Color(0xFF00C48C).withValues(alpha: 0.1) : const Color(0xFF5D5FEF).withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Row(
@@ -449,13 +485,17 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
                                       const Icon(Icons.check, size: 16, color: Color(0xFF00C48C)),
                                     const SizedBox(width: 6),
                                     Text(
-                                      _isCodeCopied ? 'Copied!' : 'Code: $joinCode',
+                                      _isCodeCopied ? _copiedLabel : 'Code: $joinCode',
                                       style: TextStyle(
                                         color: _isCodeCopied ? const Color(0xFF00C48C) : const Color(0xFF5D5FEF),
                                         fontWeight: FontWeight.bold,
                                         fontSize: 13,
                                       ),
                                     ),
+                                    if (!_isCodeCopied) ...[
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.arrow_drop_down, size: 16, color: Color(0xFF5D5FEF)),
+                                    ],
                                   ],
                                 ),
                               ),
