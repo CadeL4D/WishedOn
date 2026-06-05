@@ -408,6 +408,52 @@ class DatabaseService {
     }
   }
 
+  // Remove a member from the group and delete their wishlist
+  Future<void> removeMember(String groupId, String memberId) async {
+    try {
+      final groupRef = _firestore.collection('groups').doc(groupId);
+      final memberRef = groupRef.collection('members').doc(memberId);
+      
+      // Get the member document to find claimedByUid if it exists
+      final memberSnap = await memberRef.get();
+      String? claimedByUid;
+      bool isRegisteredOwner = false;
+      if (memberSnap.exists) {
+        final data = memberSnap.data() as Map<String, dynamic>;
+        claimedByUid = data['claimedByUid'] as String?;
+        isRegisteredOwner = data['isRegisteredOwner'] ?? false;
+      }
+
+      // We cannot remove the registered owner of the group
+      if (isRegisteredOwner) {
+        throw Exception('Cannot remove the group owner');
+      }
+
+      // 1. Delete all wishlist items
+      final wishlistSnapshot = await memberRef.collection('wishlist').get();
+      for (var doc in wishlistSnapshot.docs) {
+        await doc.reference.delete();
+      }
+
+      // 2. Delete the member document
+      await memberRef.delete();
+
+      // 3. Update the group's memberIds array
+      // We need to remove both the memberId itself and the claimedByUid if it was linked
+      final List<String> idsToRemove = [memberId];
+      if (claimedByUid != null && claimedByUid.isNotEmpty) {
+        idsToRemove.add(claimedByUid);
+      }
+      
+      await groupRef.update({
+        'memberIds': FieldValue.arrayRemove(idsToRemove),
+      });
+    } catch (e) {
+      print('Error removing member: $e');
+      rethrow;
+    }
+  }
+
   // Delete an entire group and all its subcollections entirely
   Future<void> deleteGroup(String groupId) async {
     try {
