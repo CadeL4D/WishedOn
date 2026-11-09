@@ -23,6 +23,8 @@ class _PersonWishlistScreenState extends State<PersonWishlistScreen> {
   final DatabaseService _databaseService = DatabaseService();
   String? _groupId;
   bool _isLoading = true;
+  // True when viewing your own list — purchase status is hidden so gifts aren't spoiled.
+  bool _isSelf = false;
 
   @override
   void initState() {
@@ -34,6 +36,8 @@ class _PersonWishlistScreenState extends State<PersonWishlistScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _groupId = prefs.getString('activeGroupId');
+      final myMemberId = prefs.getString('activeMemberId');
+      _isSelf = myMemberId != null && myMemberId == widget.person.id;
       _isLoading = false;
     });
   }
@@ -115,11 +119,11 @@ class _PersonWishlistScreenState extends State<PersonWishlistScreen> {
                         final item = items[index];
                         final domain = item.domain ?? '';
                         final logoUrl = _getLogoUrl(domain);
-                        final bool isPurchased = item.isPurchased;
+                        final bool isPurchased = !_isSelf && item.isPurchased;
 
                         return Dismissible(
                           key: Key(item.id),
-                          direction: DismissDirection.horizontal,
+                          direction: _isSelf ? DismissDirection.endToStart : DismissDirection.horizontal,
                           background: Container(
                             alignment: Alignment.centerLeft,
                             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -136,7 +140,7 @@ class _PersonWishlistScreenState extends State<PersonWishlistScreen> {
                             child: const Icon(Icons.open_in_new, color: Colors.white),
                           ),
                           confirmDismiss: (direction) async {
-                            if (direction == DismissDirection.startToEnd) {
+                            if (direction == DismissDirection.startToEnd && !_isSelf) {
                               await _databaseService.updateWishlistItemStatus(_groupId!, widget.person.id, item.id, !isPurchased);
                             } else if (direction == DismissDirection.endToStart) {
                               await _openItemUrl(item.url);
@@ -186,7 +190,7 @@ class _PersonWishlistScreenState extends State<PersonWishlistScreen> {
                                       icon: const Icon(Icons.open_in_new, color: Colors.blueAccent),
                                       onPressed: () => _openItemUrl(item.url),
                                     ),
-                                    IconButton(
+                                    if (!_isSelf) IconButton(
                                       icon: Icon(
                                         isPurchased ? Icons.remove_shopping_cart : Icons.shopping_cart_outlined,
                                         color: isPurchased ? Colors.green : Colors.grey,

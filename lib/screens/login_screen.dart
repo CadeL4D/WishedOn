@@ -13,7 +13,19 @@ import 'join_group_screen.dart';
 enum ActiveForm { none, signIn, joinGroup }
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  /// Which card to open automatically when the screen appears.
+  final ActiveForm initialForm;
+
+  /// When true, a successful sign-in pops this screen (returning `true`)
+  /// instead of routing to the Dashboard — used when another screen needs
+  /// the user to sign in and then carry on where they were.
+  final bool returnOnSignIn;
+
+  const LoginScreen({
+    super.key,
+    this.initialForm = ActiveForm.none,
+    this.returnOnSignIn = false,
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -36,6 +48,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Defer DatabaseService instantiation to avoid Firebase init errors in testing
   DatabaseService get _databaseService => DatabaseService();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialForm != ActiveForm.none) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _setActiveForm(widget.initialForm);
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -104,6 +126,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _routeToDashboard() {
+    if (widget.returnOnSignIn) {
+      Navigator.pop(context, true);
+      return;
+    }
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (context) => const DashboardScreen()),

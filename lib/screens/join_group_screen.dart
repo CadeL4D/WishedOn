@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../services/database_service.dart';
 import 'wishlists_screen.dart';
+import 'login_screen.dart';
 
 class DateTextFormatter extends TextInputFormatter {
   @override
@@ -203,6 +204,11 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text('Your PIN was reset by the group owner. Please create a new 4-digit PIN.'),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Your PIN keeps others from editing your list.',
+                    style: TextStyle(fontSize: 13, color: Colors.grey),
+                  ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: pinController,
@@ -299,6 +305,73 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
     );
   }
 
+  /// True when a member profile belongs to a signed-in account rather than a
+  /// PIN-protected guest. Older account profiles predate the
+  /// `isRegisteredAccount` flag, but guest profiles always carry a `pin` field.
+  bool _isAccountProfile(Map<String, dynamic> data) {
+    return data['isRegisteredAccount'] == true || !data.containsKey('pin');
+  }
+
+  /// Account profiles are unlocked by signing in as that account, not by a PIN.
+  Future<void> _enterAccountProfile(String memberId, String name) async {
+    if (FirebaseAuth.instance.currentUser?.uid != memberId) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Sign in required'),
+          content: Text(
+            "$name's profile is linked to an account. Sign in as $name to open this list.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF5D5FEF),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text('Sign In', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const LoginScreen(
+            initialForm: ActiveForm.signIn,
+            returnOnSignIn: true,
+          ),
+        ),
+      );
+      if (!mounted) return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return; // Backed out of sign-in
+
+    if (user.uid != memberId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "You're signed in as a different account. $name's profile can only be opened by $name.",
+          ),
+        ),
+      );
+      return;
+    }
+
+    _currentUserId = user.uid;
+    await _completeJoinFlow(_foundGroupId, memberId);
+  }
+
   Future<void> _joinAsViewer() async {
     // Save active session data locally, but without a memberId
     final prefs = await SharedPreferences.getInstance();
@@ -317,28 +390,27 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
     }
   }
 
+  /// Returns an error message if the new-member form is invalid, otherwise null.
+  String? _validateNewMember() {
+    final name = _nameController.text.trim();
+    final pin = _pinController.text.trim();
+    final birthdate = _birthdateController.text.trim();
+
+    if (name.isEmpty) return 'Please enter a name for your new profile.';
+    if (birthdate.length != 10) return 'Please enter a valid birthdate (MM/DD/YYYY).';
+    if (pin.length != 4 || int.tryParse(pin) == null) return 'Please enter a 4-digit PIN.';
+    return null;
+  }
+
   Future<void> _joinAsNewGuest() async {
     final name = _nameController.text.trim();
     final pin = _pinController.text.trim();
     final birthdate = _birthdateController.text.trim();
 
-    if (name.isEmpty) {
+    final validationError = _validateNewMember();
+    if (validationError != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a name for your new profile.')),
-      );
-      return;
-    }
-    
-    if (birthdate.isEmpty || birthdate.length != 10) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid birthdate (MM/DD/YYYY).')),
-      );
-      return;
-    }
-    
-    if (pin.length != 4 || int.tryParse(pin) == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a 4-digit PIN.')),
+        SnackBar(content: Text(validationError)),
       );
       return;
     }
@@ -402,12 +474,164 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
     super.dispose();
   }
 
+
+  InputDecoration _fieldDecoration(String label, {String? hint, Widget? suffixIcon, String? helper}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      helperText: helper,
+      filled: true,
+      fillColor: const Color(0xFFF6F8FB),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
+      ),
+      counterText: '',
+      suffixIcon: suffixIcon,
+    );
+  }
+
+  /// Popup with the new member form (emoji, name, birthdate, PIN).
+  Future<void> _showCreateMemberDialog() async {
+    String errorText = '';
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            void clearError(_) {
+              if (errorText.isNotEmpty) setDialogState(() => errorText = '');
+            }
+
+            return AlertDialog(
+              title: const Text('Create New Member Profile'),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              content: SizedBox(
+                width: 400,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: 70,
+                            child: TextField(
+                              controller: _emojiController,
+                              readOnly: true,
+                              canRequestFocus: false,
+                              onTap: _showEmojiPicker,
+                              decoration: _fieldDecoration('Icon').copyWith(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 12),
+                              ),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 24),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: _nameController,
+                              autofocus: true,
+                              decoration: _fieldDecoration('Your Name'),
+                              textCapitalization: TextCapitalization.words,
+                              onChanged: clearError,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _birthdateController,
+                        decoration: _fieldDecoration(
+                          'Birthdate',
+                          hint: 'MM/DD/YYYY',
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.calendar_today, color: Colors.grey),
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: dialogContext,
+                                initialDate: DateTime.now(),
+                                firstDate: DateTime(1900),
+                                lastDate: DateTime.now(),
+                              );
+                              if (picked != null) {
+                                final month = picked.month.toString().padLeft(2, '0');
+                                final day = picked.day.toString().padLeft(2, '0');
+                                _birthdateController.text = '$month/$day/${picked.year}';
+                                clearError(null);
+                              }
+                            },
+                          ),
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [DateTextFormatter()],
+                        maxLength: 10,
+                        onChanged: clearError,
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _pinController,
+                        decoration: _fieldDecoration(
+                          'Create 4-Digit PIN',
+                          helper: 'Keeps others from editing your list.',
+                        ),
+                        keyboardType: TextInputType.number,
+                        maxLength: 4,
+                        obscureText: true,
+                        onChanged: clearError,
+                      ),
+                      if (errorText.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          errorText,
+                          style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final error = _validateNewMember();
+                    if (error != null) {
+                      setDialogState(() => errorText = error);
+                      return;
+                    }
+                    Navigator.pop(dialogContext);
+                    _joinAsNewGuest();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00C48C),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text('Join', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FB),
       appBar: AppBar(
-        title: Text('Join ${_foundGroupName}'),
+        title: const Text('Join Group'),
         backgroundColor: Colors.white,
         elevation: 0,
         leading: const BackButton(color: Colors.black87),
@@ -419,253 +643,211 @@ class _JoinGroupScreenState extends State<JoinGroupScreen> {
   }
 
   Widget _buildMainContent() {
-    return Column(
-      children: [
-        Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: _databaseService.getGroupMembersStream(_foundGroupId),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Center(child: Text('Error: ${snapshot.error}'));
-              }
+    return StreamBuilder<QuerySnapshot>(
+      stream: _databaseService.getGroupMembersStream(_foundGroupId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
 
-              final allMembers = snapshot.data?.docs ?? [];
-              // Filter out: registered owner, owner by UID, and profiles already claimed by someone else
-              final members = allMembers.where((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                if (data['isRegisteredOwner'] == true) return false;
-                if (doc.id == _foundGroupOwnerUid) return false;
-                final claimed = data['claimedByUid'] as String?;
-                // Allow if unclaimed OR if claimed by the current user (so they can re-enter)
-                if (claimed != null && claimed.isNotEmpty && claimed != _currentUserId) return false;
-                return true;
-              }).toList();
-              
-              if (members.isEmpty) {
-                return const Center(child: Text('No members found yet.'));
-              }
+        final allMembers = snapshot.data?.docs ?? [];
+        // Filter out: registered owner, owner by UID, and profiles already claimed by someone else
+        final members = allMembers.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          if (data['isRegisteredOwner'] == true) return false;
+          if (doc.id == _foundGroupOwnerUid) return false;
+          final claimed = data['claimedByUid'] as String?;
+          // Allow if unclaimed OR if claimed by the current user (so they can re-enter)
+          if (claimed != null && claimed.isNotEmpty && claimed != _currentUserId) return false;
+          return true;
+        }).toList();
 
-              return ListView.builder(
-                padding: const EdgeInsets.all(24),
-                itemCount: members.length + 1, // Add 1 for the title
-                itemBuilder: (context, index) {
-                  if (index == 0) {
-                     return const Padding(
-                       padding: EdgeInsets.only(bottom: 16.0),
-                       child: Text(
-                         'Claim an existing profile:',
-                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                       ),
-                     );
-                  }
-
-                  final doc = members[index - 1];
-                  final data = doc.data() as Map<String, dynamic>;
-                  final name = data['name'] ?? 'Unknown Member';
-
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: const Color(0xFF5D5FEF).withAlpha((0.1 * 255).toInt()),
-                        child: Text(
-                          (data['emoji'] != null && data['emoji'].toString().isNotEmpty) 
-                            ? data['emoji'] 
-                            : (name.isNotEmpty ? name[0].toUpperCase() : '?'),
-                          style: TextStyle(
-                            color: const Color(0xFF5D5FEF), 
-                            fontWeight: FontWeight.bold,
-                            fontSize: (data['emoji'] != null && data['emoji'].toString().isNotEmpty) ? 20 : 14,
-                          ),
-                        ),
-                      ),
-                      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                      onTap: _isLoading ? null : () {
-                        final storedPin = data['pin'] as String?;
-                        if (storedPin == null || storedPin.isEmpty) {
-                          _showCreatePinDialog(doc.id, name);
-                        } else {
-                          _showPinDialog(doc.id, name, storedPin);
-                        }
-                      },
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        ),
-        // Create New Member Section
-        Container(
+        return ListView(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha((0.05 * 255).toInt()),
-                blurRadius: 10,
-                offset: const Offset(0, -5),
+          children: [
+            _buildGroupHeader(allMembers.length),
+            const SizedBox(height: 28),
+            const Text(
+              'Is this you?',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Click your profile to edit your list.',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            if (members.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'No profiles to claim yet.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
+                ),
+              )
+            else
+              ...members.map(_buildMemberCard),
+            const SizedBox(height: 12),
+            _buildOrDivider(),
+            const SizedBox(height: 20),
+            if (_isLoading)
+              const Center(child: CircularProgressIndicator())
+            else ...[
+              ElevatedButton.icon(
+                onPressed: _showCreateMemberDialog,
+                icon: const Icon(Icons.add, color: Colors.white),
+                label: const Text(
+                  'Create New Member Profile',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00C48C),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  elevation: 0,
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: _joinAsViewer,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  side: const BorderSide(color: Color(0xFF5D5FEF), width: 1.5),
+                ),
+                child: const Text(
+                  'View Wishlists Only',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Color(0xFF5D5FEF),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildGroupHeader(int memberCount) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: const Color(0xFF5D5FEF).withAlpha((0.1 * 255).toInt()),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.card_giftcard, color: Color(0xFF5D5FEF), size: 28),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Or create a new member profile:',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  SizedBox(
-                    width: 70,
-                    child: TextField(
-                      controller: _emojiController,
-                      readOnly: true,
-                      canRequestFocus: false,
-                      onTap: _showEmojiPicker,
-                      decoration: InputDecoration(
-                        labelText: 'Icon',
-                        filled: true,
-                        fillColor: const Color(0xFFF6F8FB),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 12),
-                      ),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 24),
-                      maxLength: 1,
-                      buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _nameController,
-                      decoration: InputDecoration(
-                        labelText: 'Your Name',
-                        filled: true,
-                        fillColor: const Color(0xFFF6F8FB),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      textCapitalization: TextCapitalization.words,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _birthdateController,
-                decoration: InputDecoration(
-                  labelText: 'Birthdate',
-                  hintText: 'MM/DD/YYYY',
-                  filled: true,
-                  fillColor: const Color(0xFFF6F8FB),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
-                  ),
-                  counterText: '',
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.calendar_today, color: Colors.grey),
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: DateTime.now(),
-                        firstDate: DateTime(1900),
-                        lastDate: DateTime.now(),
-                      );
-                      if (picked != null) {
-                        final month = picked.month.toString().padLeft(2, '0');
-                        final day = picked.day.toString().padLeft(2, '0');
-                        final year = picked.year.toString();
-                        _birthdateController.text = '$month/$day/$year';
-                      }
-                    },
-                  ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "You're joining",
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
                 ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [DateTextFormatter()],
-                maxLength: 10,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _pinController,
-                decoration: InputDecoration(
-                  labelText: 'Create 4-Digit PIN',
-                  filled: true,
-                  fillColor: const Color(0xFFF6F8FB),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
-                  ),
-                  counterText: '',
+                Text(
+                  _foundGroupName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
-                keyboardType: TextInputType.number,
-                maxLength: 4,
-                obscureText: true,
-              ),
-              const SizedBox(height: 16),
-              _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ElevatedButton(
-                  onPressed: _joinAsNewGuest,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00C48C),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Join as New Member',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                Text(
+                  '$memberCount ${memberCount == 1 ? 'member' : 'members'}',
+                  style: const TextStyle(fontSize: 13, color: Colors.grey),
                 ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: _joinAsViewer,
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    side: const BorderSide(color: Color(0xFF5D5FEF), width: 1.5),
-                  ),
-                  child: const Text(
-                    'View Wishlists Only',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Color(0xFF5D5FEF),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-            ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMemberCard(QueryDocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    final String name = data['name'] ?? 'Unknown Member';
+    final String emoji = (data['emoji'] ?? '').toString();
+    final bool isAccount = _isAccountProfile(data);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: const Color(0xFF5D5FEF).withAlpha((0.1 * 255).toInt()),
+          child: Text(
+            emoji.isNotEmpty ? emoji : (name.isNotEmpty ? name[0].toUpperCase() : '?'),
+            style: TextStyle(
+              color: const Color(0xFF5D5FEF),
+              fontWeight: FontWeight.bold,
+              fontSize: emoji.isNotEmpty ? 20 : 14,
+            ),
           ),
         ),
+        title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: isAccount
+            ? const Text('Sign in to open', style: TextStyle(fontSize: 12, color: Colors.grey))
+            : null,
+        trailing: Icon(
+          isAccount ? Icons.lock_outline : Icons.chevron_right,
+          color: Colors.grey,
+        ),
+        onTap: _isLoading
+            ? null
+            : () {
+                if (isAccount) {
+                  _enterAccountProfile(doc.id, name);
+                  return;
+                }
+                final storedPin = data['pin'] as String?;
+                if (storedPin == null || storedPin.isEmpty) {
+                  _showCreatePinDialog(doc.id, name);
+                } else {
+                  _showPinDialog(doc.id, name, storedPin);
+                }
+              },
+      ),
+    );
+  }
+
+  Widget _buildOrDivider() {
+    return Row(
+      children: [
+        Expanded(child: Divider(color: Colors.grey[300], thickness: 1)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text('or', style: TextStyle(color: Colors.grey[500])),
+        ),
+        Expanded(child: Divider(color: Colors.grey[300], thickness: 1)),
       ],
     );
   }
 }
-

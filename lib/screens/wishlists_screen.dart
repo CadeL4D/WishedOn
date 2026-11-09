@@ -216,6 +216,24 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
     _loadGroupSession();
   }
 
+  /// Opens a member's wishlist. Tapping on yourself switches to the
+  /// "My List" tab instead, so you can't see what's been bought for you.
+  void _openMemberList(Person person) {
+    final bool hasProfile = _myMemberId != null && _myMemberId!.isNotEmpty;
+    if (hasProfile && person.id == _myMemberId) {
+      setState(() {
+        _selectedIndex = 1; // "My List" is always the 2nd tab when you have a profile
+      });
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PersonWishlistScreen(person: person),
+      ),
+    );
+  }
+
   Future<void> _loadGroupSession() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -561,16 +579,7 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
                                 );
                                 return PersonCard(
                                   person: person,
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => PersonWishlistScreen(
-                                          person: person,
-                                        ),
-                                      ),
-                                    );
-                                  },
+                                  onTap: () => _openMemberList(person),
                                 );
                               },
                             );
@@ -742,12 +751,7 @@ class _WishlistsScreenState extends State<WishlistsScreen> {
                 emoji: '',
                 wishlist: [],
               );
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PersonWishlistScreen(person: person),
-                ),
-              );
+              _openMemberList(person);
             }
           : null,
       child: SizedBox(

@@ -132,6 +132,7 @@ class _JoinCodeResolverState extends State<_JoinCodeResolver> {
               'emoji': emoji,
               'birthday': birthday,
               'isRegisteredOwner': false,
+              'isRegisteredAccount': true, // Tied to a sign-in, not a PIN
               'joinedAt': FieldValue.serverTimestamp(),
             });
 

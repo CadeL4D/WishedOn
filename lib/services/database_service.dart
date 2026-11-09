@@ -155,6 +155,7 @@ class DatabaseService {
         'emoji': emoji ?? '',
         'birthday': birthday,
         'isRegisteredOwner': true,
+        'isRegisteredAccount': true,
         'joinedAt': FieldValue.serverTimestamp(),
       });
       
@@ -301,8 +302,11 @@ class DatabaseService {
     }
   }
 
+  // Update an item's details. Purchase status is deliberately left out so an
+  // edit by the list owner never un-marks something a gift-giver already bought.
   Future<void> updateWishlistItem(String groupId, String memberId, MyListItem item) async {
     try {
+      final data = item.toJson()..remove('isPurchased');
       await _firestore
           .collection('groups')
           .doc(groupId)
@@ -310,7 +314,7 @@ class DatabaseService {
           .doc(memberId)
           .collection('wishlist')
           .doc(item.id)
-          .update(item.toJson());
+          .update(data);
     } catch (e) {
       print('Error updating wishlist item: $e');
     }
